@@ -3,6 +3,7 @@ use std::fs::File; // For file handling
 use std::io::{self, BufRead, BufReader, Write}; // For I/O operations
 
 fn main() -> io::Result<()> {
+
     // Collect command-line arguments
     let args: Vec<String> = env::args().collect(); 
     
@@ -36,7 +37,8 @@ fn main() -> io::Result<()> {
 
         // Skip self-alignments
         if query_name == target_name {
-            continue; // Skip self-alignments
+            println!("Skipping self-alignment for {}", query_name);
+            continue;
         }
 
         let query_start: usize = fields[2].parse().unwrap_or(0);
@@ -44,9 +46,9 @@ fn main() -> io::Result<()> {
         let target_start: usize = fields[7].parse().unwrap_or(0);
         let target_end: usize = fields[8].parse().unwrap_or(0);
 
-        //if (query_end > query_start) && (target_end > target_start) {
-        //    writeln!(output_file, "{}", line)?;
-        //}
+        // Read alignments to new file
+        writeln!(output_file, "{}", line)?;
+        
     }
 
     Ok(())
