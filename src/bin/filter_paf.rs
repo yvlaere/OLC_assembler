@@ -1,5 +1,5 @@
 //! A simple tool to filter PAF files based on overlap statistics.
-//! Uses a two-pass approach:
+//! Using a two-pass approach:
 //! 1) Collect basic stats per read (number of overlaps, total aligned bases).
 //! 2) Filter overlaps based on criteria (e.g., remove self-alignments).
 
@@ -23,6 +23,11 @@ fn main() -> io::Result<()> {
     let input_path = &args[1];
     let output_path = &args[2];
 
+    // Filtering parameters
+    let min_overlap_length = 2000;
+    let min_overlap_count = 3;
+    let min_percent_identity = 85.0;
+
     // Open input file for reading
     let reader = BufReader::new(File::open(input_path)?);
     let mut output_file = File::create(output_path)?;
@@ -35,7 +40,7 @@ fn main() -> io::Result<()> {
     let mut overlap_count: Vec<u32> = Vec::new();
     let mut sum_aligned_bases: Vec<u64> = Vec::new();
     let mut read_length: Vec<u32> = Vec::new();
-    let min_overlap_lenth = 500;
+    
 
     // First pass: gather statistics
     for line_res in reader.lines() {
@@ -65,8 +70,7 @@ fn main() -> io::Result<()> {
         let alignment_block_length: usize = fields[10].parse().unwrap_or(0);
         let mapping_quality: usize = fields[11].parse().unwrap_or(0);
 
-        // Get the query and target IDs from their names, creating a new ID if it they didn’t exist yet
-        // and initializing their stat
+        // Get the query and target IDs from their names, creating a new ID if it they didn’t exist yet and initialize their stat
         let query_id = *name2id.entry(query_name.clone()).or_insert_with(|| {
             // Create a new ID
             let id = next_id;
@@ -74,7 +78,7 @@ fn main() -> io::Result<()> {
             overlap_count.push(0);
             sum_aligned_bases.push(0);
             read_length.push(query_length);
-            // Retrun the new ID
+            // Return the new ID
             id
         });
         let target_id = *name2id.entry(target_name.clone()).or_insert_with(|| {
@@ -87,13 +91,33 @@ fn main() -> io::Result<()> {
         });
 
         // Only count overlaps passing some minimal filters:
-        if alignment_block_length < min_overlap_lenth { continue; }
-
-        overlap_count[query_id] += 1;
-        overlap_count[target_id] += 1;
-        sum_aligned_bases[query_id] += alignment_block_length as u64;
-        sum_aligned_bases[target_id] += alignment_block_length as u64;
+        if (alignment_block_length >= min_overlap_length) & (num_matching / alignment_block_length * 100.0 >= min_percent_identity) {
+            overlap_count[query_id] += 1;
+            overlap_count[target_id] += 1;
+            sum_aligned_bases[query_id] += alignment_block_length as u64;
+            sum_aligned_bases[target_id] += alignment_block_length as u64;
+        }
+        else {
+            continue;
+        }
     }
+
+    // Identify low-support reads based on filtering criteria
+    let mut reads_to_remove = Vec::new();
+
+    // Iterate over all reads
+    for id in 0..next_id {
+        let count = overlap_count[id];
+        let sum_bases = sum_aligned_bases[id];
+        let rlen = read_length[id] as u64;
+        let frac_covered = if rlen > 0 { sum_bases as f64 / rlen as f64 } else { 0.0 };
+
+        // example rules:
+        if count < min_overlap_count || frac_covered < 0.2 {
+            reads_to_remove.push(id);
+        }
+    }
+    let low_support_set: HashSet<usize> = reads_to_remove.into_iter().collect();
 
     Ok(())
 }
