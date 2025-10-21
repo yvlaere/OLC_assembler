@@ -1,123 +1,152 @@
-//! A simple tool to filter PAF files based on overlap statistics.
-//! Using a two-pass approach:
-//! 1) Collect basic stats per read (number of overlaps, total aligned bases).
-//! 2) Filter overlaps based on criteria (e.g., remove self-alignments).
+//! A tool to filter PAF files based on overlap statistics.
+//! Uses a two-pass approach:
+//! 1) Collect basic stats per read (number of overlaps, aligned bases)
+//! 2) Filter overlaps based on quality criteria
 
 use std::env;
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::{self, BufRead, BufReader, Write};
+
+struct PafRecord {
+    query_name: String,
+    query_length: u32,
+    target_name: String,
+    target_length: u32,
+    num_matching: u32,
+    alignment_block_length: u32,
+}
+
+impl PafRecord {
+    fn from_line(line: &str) -> Option<Self> {
+        let fields: Vec<&str> = line.split('\t').collect();
+        if fields.len() < 12 { return None; }
+        
+        Some(Self {
+            query_name: fields[0].to_string(),
+            query_length: fields[1].parse().ok()?,
+            target_name: fields[5].to_string(),
+            target_length: fields[6].parse().ok()?,
+            num_matching: fields[9].parse().ok()?,
+            alignment_block_length: fields[10].parse().ok()?,
+        })
+    }
+
+    fn is_self_alignment(&self) -> bool {
+        self.query_name == self.target_name
+    }
+
+    fn percent_identity(&self) -> f32 {
+        (self.num_matching as f32 / self.alignment_block_length as f32) * 100.0
+    }
+}
 
 fn main() -> io::Result<()> {
-
-    // Collect command-line arguments
+    // Parse command line arguments
     let args: Vec<String> = env::args().collect();
-
-    // Check for correct number of arguments
     if args.len() != 3 {
         eprintln!("Usage: {} <input.paf> <output.paf>", args[0]);
         std::process::exit(1);
     }
 
-    // Input and output file paths
-    let input_path = &args[1];
-    let output_path = &args[2];
+    // Configuration
+    let min_overlap_length: u32 = 2000;
+    let min_overlap_count: u32 = 3;
+    let min_percent_identity: f32 = 85.0;
 
-    // Filtering parameters
-    let min_overlap_length = 2000;
-    let min_overlap_count = 3;
-    let min_percent_identity = 85.0;
-
-    // Open input file for reading
-    let reader = BufReader::new(File::open(input_path)?);
-    let mut output_file = File::create(output_path)?;
-
-    // Declaring variables
-    // Mapping from sequence names to IDs, the ID is the index in the stats vectors (so they are integers starting from 0, incrementing by 1)
+    // Setup data structures
     let mut name2id: HashMap<String, usize> = HashMap::new();
+    let mut overlap_counts: Vec<u32> = Vec::new();
+    let mut ids2overlap: HashMap<(usize, usize), u32> = HashMap::new();
     let mut next_id: usize = 0;
-    // Stats vectors, indexed by the sequence ID
-    let mut overlap_count: Vec<u32> = Vec::new();
-    let mut sum_aligned_bases: Vec<u64> = Vec::new();
-    let mut read_length: Vec<u32> = Vec::new();
-    
 
-    // First pass: gather statistics
-    for line_res in reader.lines() {
-
-        // Skip comments and empty lines and split fields
-        let line = line_res?;
+    // First pass: collect statistics
+    let reader = BufReader::new(File::open(&args[1])?);
+    for line in reader.lines() {
+        let line = line?;
         if line.starts_with('#') || line.trim().is_empty() { continue; }
-        let fields: Vec<&str> = line.split('\t').collect();
-        if fields.len() < 12 { continue; }
 
-        // Parse sequence names
-        let query_name = fields[0];
-        let target_name = fields[5];
+        if let Some(record) = PafRecord::from_line(&line) {
+            if record.is_self_alignment() { continue; }
+            
+            // Skip if it doesn't meet basic criteria
+            if record.alignment_block_length < min_overlap_length || 
+               record.percent_identity() < min_percent_identity {
+                continue;
+            }
 
-        // Skip self-alignments
-        if query_name == target_name { continue; }
+            // Get or create IDs for query and target
+            let query_id = match name2id.get(&record.query_name) {
+                Some(&id) => id,
+                None => {
+                    let id = next_id;
+                    next_id += 1;
+                    overlap_counts.push(0);
+                    name2id.insert(record.query_name.clone(), id);
+                    id
+                }
+            };
 
-        // Parse remaining fields
-        let query_length: usize = fields[1].parse().unwrap_or(0);
-        let query_start: usize = fields[2].parse().unwrap_or(0);
-        let query_end: usize = fields[3].parse().unwrap_or(0);
-        let strand = fields[4];
-        let target_length: usize = fields[6].parse().unwrap_or(0);
-        let target_start: usize = fields[7].parse().unwrap_or(0);
-        let target_end: usize = fields[8].parse().unwrap_or(0);
-        let num_matching: usize = fields[9].parse().unwrap_or(0);
-        let alignment_block_length: usize = fields[10].parse().unwrap_or(0);
-        let mapping_quality: usize = fields[11].parse().unwrap_or(0);
+            let target_id = match name2id.get(&record.target_name) {
+                Some(&id) => id,
+                None => {
+                    let id = next_id;
+                    next_id += 1;
+                    overlap_counts.push(0);
+                    name2id.insert(record.target_name.clone(), id);
+                    id
+                }
+            };
 
-        // Get the query and target IDs from their names, creating a new ID if it they didn’t exist yet and initialize their stat
-        let query_id = *name2id.entry(query_name.clone()).or_insert_with(|| {
-            // Create a new ID
-            let id = next_id;
-            next_id += 1;
-            overlap_count.push(0);
-            sum_aligned_bases.push(0);
-            read_length.push(query_length);
-            // Return the new ID
-            id
-        });
-        let target_id = *name2id.entry(target_name.clone()).or_insert_with(|| {
-            let id = next_id;
-            next_id += 1;
-            overlap_count.push(0);
-            sum_aligned_bases.push(0);
-            read_length.push(target_length);
-            id
-        });
+            // Update statistics
+            overlap_counts[query_id] += 1;
+            overlap_counts[target_id] += 1;
 
-        // Only count overlaps passing some minimal filters:
-        if (alignment_block_length >= min_overlap_length) & (num_matching / alignment_block_length * 100.0 >= min_percent_identity) {
-            overlap_count[query_id] += 1;
-            overlap_count[target_id] += 1;
-            sum_aligned_bases[query_id] += alignment_block_length as u64;
-            sum_aligned_bases[target_id] += alignment_block_length as u64;
-        }
-        else {
-            continue;
+            let key = if query_id < target_id {
+                (query_id, target_id)
+            } else {
+                (target_id, query_id)
+            };
+
+            ids2overlap
+                .entry(key)
+                .and_modify(|e| *e = (*e).max(record.alignment_block_length))
+                .or_insert(record.alignment_block_length);
         }
     }
 
-    // Identify low-support reads based on filtering criteria
-    let mut reads_to_remove = Vec::new();
+    // Second pass: write filtered records
+    let reader = BufReader::new(File::open(&args[1])?);
+    let mut writer = File::create(&args[2])?;
 
-    // Iterate over all reads
-    for id in 0..next_id {
-        let count = overlap_count[id];
-        let sum_bases = sum_aligned_bases[id];
-        let rlen = read_length[id] as u64;
-        let frac_covered = if rlen > 0 { sum_bases as f64 / rlen as f64 } else { 0.0 };
+    for line in reader.lines() {
+        let line = line?;
+        if line.starts_with('#') || line.trim().is_empty() { continue; }
 
-        // example rules:
-        if count < min_overlap_count || frac_covered < 0.2 {
-            reads_to_remove.push(id);
+        if let Some(record) = PafRecord::from_line(&line) {
+            if record.is_self_alignment() { continue; }
+
+            if let (Some(&query_id), Some(&target_id)) = (name2id.get(&record.query_name), name2id.get(&record.target_name)) {
+                if overlap_counts[query_id] >= min_overlap_count && 
+                   overlap_counts[target_id] >= min_overlap_count &&
+                   record.alignment_block_length >= min_overlap_length &&
+                   record.percent_identity() >= min_percent_identity {
+                    
+                    let key = if query_id < target_id {
+                        (query_id, target_id)
+                    } else {
+                        (target_id, query_id)
+                    };
+
+                    if let Some(&best_len) = ids2overlap.get(&key) {
+                        if record.alignment_block_length == best_len {
+                            writeln!(writer, "{}", line)?;
+                        }
+                    }
+                }
+            }
         }
     }
-    let low_support_set: HashSet<usize> = reads_to_remove.into_iter().collect();
 
     Ok(())
 }
