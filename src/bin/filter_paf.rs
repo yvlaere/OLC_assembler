@@ -17,6 +17,7 @@ struct PafRecord {
     alignment_block_length: u32,
 }
 
+// Implement methods for PafRecord (kind of like class methods)
 impl PafRecord {
     fn from_line(line: &str) -> Option<Self> {
         let fields: Vec<&str> = line.split('\t').collect();
