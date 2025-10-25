@@ -1,16 +1,17 @@
+use crate::create_string_graph::AssemblyGraph;
+
 use std::collections::{HashMap, HashSet};
 
-/// small helper enum for node marking (vacant, in-play, eliminated)
-#[derive(Clone, Copy, PartialEq, Eq)]
+/// Enum for node marking (vacant, in-play, eliminated)
 enum Mark {
     Vacant,
     InPlay,
     Eliminated,
 }
 
-/// Reverse-complement node name helper (expects names like "read+" or "read-")
-fn rc_node(name: &str) -> String {
-    if let Some(last) = name.chars().last() {
+/// create a node id for the reverse complement of the given node id
+fn rc_node(id: &str) -> String {
+    if let Some(last) = id.chars().last() {
         if last == '+' {
             let base = &name[..name.len()-1];
             format!("{}-", base)
@@ -18,35 +19,38 @@ fn rc_node(name: &str) -> String {
             let base = &name[..name.len()-1];
             format!("{}+", base)
         } else {
-            // fallback: if no orientation suffix, append '-' (adjust to your naming convention)
-            format!("{}-", name)
+            eprintln!("Warning: unexpected node id format: {}", id);
         }
     } else {
         name.to_string()
     }
 }
 
-/// Reduce transitive edges in-place on the provided AssemblyGraph.
-/// Returns number of removed edges.
+/// Reduce transitive edges. transitive edges are redundant edges that don't add any information to the graph.
+/// Say read 1 overlaps with read 2 and read 2 overlaps with read 3 and read 1 also overlaps with read 3, then this last overlap is redundant, represented by a transitive edge.
+/// Algorithm based on https://doi.org/10.1093/bioinformatics/bti1114
 pub fn reduce_transitive_edges(g: &mut AssemblyGraph, fuzz: u32) -> usize {
+
     // Prepare node list to iterate deterministically and avoid borrow conflicts
     let node_keys: Vec<String> = g.nodes.keys().cloned().collect();
 
     // mark: per-node status (Vacant/InPlay/Eliminated)
     let mut mark: HashMap<String, Mark> = HashMap::with_capacity(g.nodes.len());
-    // reduced set: pairs (from, to) that should be removed
+    
+    // reduced set: node pairs (from, to) that should be removed
     let mut reduced: HashSet<(String, String)> = HashSet::new();
 
-    // initialize marks and ensure edges are sorted ascending by length
+    // initialize all nodes as vacant and ensure edges are sorted ascending by length
     for n in &node_keys {
         mark.insert(n.clone(), Mark::Vacant);
         if let Some(node) = g.nodes.get_mut(n) {
-            node.sort_edges(); // your Node::sort_edges should sort by length ascending
+            node.sort_edges();
         }
     }
 
-    // main loop: for each node n1
+    // main loop: For every node compare nodes encountered two steps into the future with those encountered one step into the future
     for n1 in &node_keys {
+
         // skip if node not present (may have been removed) or no outgoing edges
         let out_edges = match g.nodes.get(n1) {
             Some(node) => &node.edges,
@@ -69,6 +73,8 @@ pub fn reduce_transitive_edges(g: &mut AssemblyGraph, fuzz: u32) -> usize {
 
         // 3) For each n2 (outgoing from n1), check n2->n3 edges
         for (n2, len_n1n2) in out_edges.iter() {
+
+            // skip n2 if not InPlay
             if mark.get(n2).copied() != Some(Mark::InPlay) {
                 continue;
             }
