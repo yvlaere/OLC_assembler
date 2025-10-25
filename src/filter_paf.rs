@@ -3,7 +3,6 @@
 //! 1) Collect basic stats per read (number of overlaps, aligned bases)
 //! 2) Filter overlaps based on quality criteria
 
-use std::env;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
@@ -42,13 +41,7 @@ impl PafRecord {
     }
 }
 
-fn filter_paf() -> io::Result<()> {
-    // Parse command line arguments
-    let args: Vec<String> = env::args().collect();
-    if args.len() != 3 {
-        eprintln!("Usage: {} <input.paf> <output.paf>", args[0]);
-        std::process::exit(1);
-    }
+pub fn filter_paf(paf_in: &str, paf_out: &str) -> io::Result<()> {
 
     // Configuration
     let min_overlap_length: u32 = 2000;
@@ -62,7 +55,7 @@ fn filter_paf() -> io::Result<()> {
     let mut next_id: usize = 0;
 
     // First pass: collect statistics
-    let reader = BufReader::new(File::open(&args[1])?);
+    let reader = BufReader::new(File::open(paf_in)?);
     for line in reader.lines() {
         let line = line?;
         if line.starts_with('#') || line.trim().is_empty() { continue; }
@@ -117,8 +110,8 @@ fn filter_paf() -> io::Result<()> {
     }
 
     // Second pass: write filtered records
-    let reader = BufReader::new(File::open(&args[1])?);
-    let mut writer = File::create(&args[2])?;
+    let reader = BufReader::new(File::open(paf_in)?);
+    let mut writer = File::create(paf_out)?;
 
     for line in reader.lines() {
         let line = line?;

@@ -1,18 +1,17 @@
 //! A tool to create a string graph from PAF overlaps.
 //! based on the the miniasm pseudo-code.
 
-use std::env;
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{self, BufRead, BufReader};
+use std::io::{BufRead, BufReader};
 
 /// A node in the assembly graph. Earch read is represented by two nodes: "<read_name>+" and "<read_name>-". 
 /// One for the origininal orientation and one for the reverse complement.
 /// Each node has directed edges to other nodes with associated edge lengths.
-struct Node {
+pub struct Node {
     node_id: String,
     // edges: vector of (target_node_id, edge_length)
-    edges: Vec<(String, u32)>,
+    pub edges: Vec<(String, u32)>,
 }
 
 impl Node {
@@ -48,8 +47,8 @@ impl Node {
 }
 
 /// Assembly graph containing nodes keyed by "<read_name><+/->"
-struct AssemblyGraph {
-    nodes: HashMap<String, Node>,
+pub struct AssemblyGraph {
+    pub nodes: HashMap<String, Node>,
 }
 
 impl AssemblyGraph {
@@ -90,15 +89,15 @@ impl AssemblyGraph {
 
 /// Counters returned for diagnostics
 #[derive(Default)]
-struct GraphStats {
-    nr_internal_match: u64,
-    nr_first_contained: u64,
-    nr_second_contained: u64,
-    nr_proper_overlaps: u64,
+pub struct GraphStats {
+    pub nr_internal_match: u64,
+    pub nr_first_contained: u64,
+    pub nr_second_contained: u64,
+    pub nr_proper_overlaps: u64,
 }
 
 /// Parse a PAF line
-fn parse_paf_line(line: &str) -> Option<(String, u32, i64, i64, char, String, u32, i64, i64, u32, u32, i32)> {
+pub fn parse_paf_line(line: &str) -> Option<(String, u32, i64, i64, char, String, u32, i64, i64, u32, u32, i32)> {
     let fields: Vec<&str> = line.split('\t').collect();
     if fields.len() < 12 {
         return None;
@@ -123,7 +122,7 @@ fn parse_paf_line(line: &str) -> Option<(String, u32, i64, i64, char, String, u3
 }
 
 /// Build string graph from overlaps
-fn create_string_graph(paf_path: &str, max_overhang: u32, overhang_ratio: f64) -> Result<(AssemblyGraph, GraphStats), std::io::Error> {
+pub fn create_string_graph(paf_path: &str, max_overhang: u32, overhang_ratio: f64) -> Result<(AssemblyGraph, GraphStats), std::io::Error> {
     
     // read PAF file
     let reader = BufReader::new(File::open(paf_path)?);
