@@ -42,7 +42,7 @@ impl PafRecord {
     }
 }
 
-fn main() -> io::Result<()> {
+fn filter_paf() -> io::Result<()> {
     // Parse command line arguments
     let args: Vec<String> = env::args().collect();
     if args.len() != 3 {
