@@ -1,6 +1,7 @@
 mod filter_paf;
 mod create_string_graph;
 mod transitive_edge_reduction;
+mod graph_analysis;
 
 use std::env;
 use std::io;
@@ -27,20 +28,51 @@ fn main() -> io::Result<()>{
     // Then create the string graph
     let (mut graph, stats) = create_string_graph::create_string_graph(paf, max_overhang, overhang_ratio)?;
 
-    eprintln!("Stats: internal={}, first_contained={}, second_contained={}, proper={}",
+    println!("Stats: internal={}, first_contained={}, second_contained={}, proper={}",
         stats.nr_internal_match, stats.nr_first_contained, stats.nr_second_contained, stats.nr_proper_overlaps);
-    eprintln!("Graph nodes: {}", graph.nodes.len());
+    println!("Graph nodes: {}", graph.nodes.len());
 
-    // small demo: print degree of first N nodes
-    for (i, (node_id, node)) in graph.nodes.iter().take(20).enumerate() {
-        println!("{}: outdeg={} edges={:?}", node_id, node.edges.len(), node.edges.iter().take(8).collect::<Vec<_>>());
-        if i >= 19 { break; }
-    }
+    //number of edges before reduction
+    let initial_edge_count: usize = graph.nodes.values().map(|n| n.edges.len()).sum();
+    println!("Graph edges before reduction: {}", initial_edge_count);
 
-    // Finally reduce transitive edges
+    // node to edge ratio
+    let node_to_edge_ratio = graph.nodes.len() as f64 / initial_edge_count as f64;
+    println!("Node to edge ratio: {:.4}", node_to_edge_ratio);
+
+    // Check that the bigraph is synchronized
+    transitive_edge_reduction::check_synchronization(&graph);
+
+    // Reduce transitive edges
     let fuzz = 10;
-    let nr_reduced = transitive_edge_reduction::reduce_transitive_edges(&mut graph, fuzz);
-    println!("Reduced {} transitive edges", nr_reduced);
+    transitive_edge_reduction::reduce_transitive_edges(&mut graph, fuzz);
+
+    //number of edges after reduction
+    let after_edge_count: usize = graph.nodes.values().map(|n| n.edges.len()).sum();
+    println!("Graph edges after reduction: {}", after_edge_count);
+
+    // difference
+    println!("Number of removed edges: {}", initial_edge_count - after_edge_count);
+
+    // node to edge ratio
+    let node_count = graph.nodes.len();
+    let edge_count = after_edge_count;
+    let node_to_edge_ratio = node_count as f64 / edge_count as f64;
+    println!("Graph nodes: {}", node_count);
+    println!("Node to edge ratio: {:.4}", node_to_edge_ratio);
+
+    // Check that the bigraph is synchronized
+    transitive_edge_reduction::check_synchronization(&graph);
+
+    // graph analysis: weakly connected components
+    let components = graph_analysis::weakly_connected_components(&graph);
+    println!("Number of weakly connected components: {}", components.len());
+    graph_analysis::component_sizes_sorted(&graph)
+        .into_iter()
+        .enumerate()
+        .for_each(|(i, size)| {
+            println!("Component {}: size {}", i + 1, size);
+        });
 
     Ok(())
 }
