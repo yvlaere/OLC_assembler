@@ -34,14 +34,14 @@ impl Node {
     }
 
     /// Remove a directed edge to the node with target_node id.
-    fn remove_edge(&mut self, target_node: &str) {
+    pub fn remove_edge(&mut self, target_node: &str) {
         if let Some(pos) = self.edges.iter().position(|(t, _)| t == target_node) {
             self.edges.swap_remove(pos);
         }
     }
 
     /// Sort edges by length (ascending).
-    fn sort_edges(&mut self) {
+    pub fn sort_edges(&mut self) {
         self.edges.sort_unstable_by_key(|(_, len)| *len);
     }
 }
