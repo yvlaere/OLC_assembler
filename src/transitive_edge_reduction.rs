@@ -3,6 +3,7 @@ use crate::create_string_graph::AssemblyGraph;
 use std::collections::{HashMap, HashSet};
 
 /// Enum for node marking (vacant, in-play, eliminated)
+#[derive(Copy, Clone, PartialEq)]
 enum Mark {
     Vacant,
     InPlay,
@@ -13,23 +14,63 @@ enum Mark {
 fn rc_node(id: &str) -> String {
     if let Some(last) = id.chars().last() {
         if last == '+' {
-            let base = &name[..name.len()-1];
+            let base = &id[..id.len()-1];
             format!("{}-", base)
         } else if last == '-' {
-            let base = &name[..name.len()-1];
+            let base = &id[..id.len()-1];
             format!("{}+", base)
         } else {
             eprintln!("Warning: unexpected node id format: {}", id);
+            id.to_string()
         }
     } else {
-        name.to_string()
+        id.to_string()
+    }
+}
+
+/// Check if the bigraph is synchronized:
+/// 1. Every node has a reverse complement.
+/// 2. Ingoing edges of every node correspond to outgoing edges of its reverse complement.
+pub fn check_synchronization(g: &AssemblyGraph) {
+    for n in g.nodes.keys() {
+        // compute reverse complement node
+        let n_rc = rc_node(n);
+
+        // check that the reverse complement exists
+        assert!(
+            g.nodes.contains_key(&n_rc),
+            "Reverse complement not found for {}. The bigraph is not synchronized.",
+            n
+        );
+
+        // check that every outgoing edge has a counterpart in the reverse complement node
+        if let Some(node) = g.nodes.get(n) {
+            for (t, len) in &node.edges {
+                let t_rc = rc_node(t);
+
+                // get the reverse complement node for t_rc
+                if let Some(rc_node) = g.nodes.get(&t_rc) {
+                    // Check if there's a matching edge from t_rc to n_rc
+                    assert!(
+                        rc_node.edges.iter().any(|(target, _)| target == &n_rc),
+                        "Corresponding edge not found for {}. The bigraph is not synchronized.",
+                        n
+                    );
+                } else {
+                    panic!(
+                        "Reverse complement node {} missing for target {}. The bigraph is not synchronized.",
+                        t_rc, t
+                    );
+                }
+            }
+        }
     }
 }
 
 /// Reduce transitive edges. transitive edges are redundant edges that don't add any information to the graph.
 /// Say read 1 overlaps with read 2 and read 2 overlaps with read 3 and read 1 also overlaps with read 3, then this last overlap is redundant, represented by a transitive edge.
 /// Algorithm based on https://doi.org/10.1093/bioinformatics/bti1114
-pub fn reduce_transitive_edges(g: &mut AssemblyGraph, fuzz: u32) -> usize {
+pub fn reduce_transitive_edges(g: &mut AssemblyGraph, fuzz: u32) {
 
     // Prepare node list to iterate deterministically and avoid borrow conflicts
     let node_keys: Vec<String> = g.nodes.keys().cloned().collect();
@@ -128,33 +169,26 @@ pub fn reduce_transitive_edges(g: &mut AssemblyGraph, fuzz: u32) -> usize {
 
     // 6) Actually remove reduced edges from the graph (and remove reverse-complement counterparts if present)
     let mut nr_reduced: usize = 0;
-    // We must collect a snapshot of nodes because we mutate graph during removal
-    let node_keys2: Vec<String> = g.nodes.keys().cloned().collect();
-    for n1 in node_keys2.iter() {
-        // if node disappeared, skip
-        if let Some(node) = g.nodes.get_mut(n1) {
-            // collect targets to consider (we iterate over clone to avoid borrow conflicts)
-            let targets: Vec<String> = node.edges.iter().map(|(t, _)| t.clone()).collect();
-            for n2 in targets {
+    
+    // Collect all edges to remove first
+    let mut edges_to_remove: Vec<(String, String)> = Vec::new();
+    
+    for n1 in g.nodes.keys() {
+        if let Some(node) = g.nodes.get(n1) {
+            for (n2, _) in &node.edges {
                 if reduced.contains(&(n1.clone(), n2.clone())) {
-                    // remove the edge n1 -> n2
-                    node.remove_edge(&n2);
-                    nr_reduced += 1;
-
-                    // remove the reverse complement pair if present:
-                    let n1_rc = rc_node(n1);
-                    let n2_rc = rc_node(&n2);
-                    if let Some(node_rc) = g.nodes.get_mut(&n2_rc) {
-                        // check if node_rc has edge to n1_rc and remove if so
-                        if node_rc.edges.iter().any(|(t, _)| t == &n1_rc) {
-                            node_rc.remove_edge(&n1_rc);
-                            nr_reduced += 1;
-                        }
-                    }
+                    // Add both the edge and its reverse complement
+                    edges_to_remove.push((n1.clone(), n2.clone()));
+                    edges_to_remove.push((rc_node(n2), rc_node(n1)));
                 }
             }
         }
     }
 
-    nr_reduced
+    // Now remove all edges in a separate pass
+    for (from, to) in edges_to_remove {
+        if let Some(node) = g.nodes.get_mut(&from) {
+            node.remove_edge(&to);
+        }
+    }
 }
