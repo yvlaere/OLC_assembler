@@ -1,4 +1,4 @@
-use crate::create_string_graph::AssemblyGraph;
+use crate::create_overlap_graph::OverlapGraph;
 
 use std::collections::{HashMap, HashSet};
 
@@ -31,7 +31,7 @@ fn rc_node(id: &str) -> String {
 /// Check if the bigraph is synchronized:
 /// 1. Every node has a reverse complement.
 /// 2. Ingoing edges of every node correspond to outgoing edges of its reverse complement.
-pub fn check_synchronization(g: &AssemblyGraph) {
+pub fn check_synchronization(g: &OverlapGraph) {
     for n in g.nodes.keys() {
         // compute reverse complement node
         let n_rc = rc_node(n);
@@ -70,7 +70,7 @@ pub fn check_synchronization(g: &AssemblyGraph) {
 /// Reduce transitive edges. transitive edges are redundant edges that don't add any information to the graph.
 /// Say read 1 overlaps with read 2 and read 2 overlaps with read 3 and read 1 also overlaps with read 3, then this last overlap is redundant, represented by a transitive edge.
 /// Algorithm based on https://doi.org/10.1093/bioinformatics/bti1114
-pub fn reduce_transitive_edges(g: &mut AssemblyGraph, fuzz: u32) {
+pub fn reduce_transitive_edges(g: &mut OverlapGraph, fuzz: u32) {
 
     // Prepare node list to iterate deterministically and avoid borrow conflicts
     let node_keys: Vec<String> = g.nodes.keys().cloned().collect();
