@@ -1,11 +1,10 @@
-//! A tool to create a string graph from PAF overlaps.
-//! based on the the miniasm pseudo-code.
+//! A tool to create an overlap graph from PAF overlaps.
 
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 
-/// A node in the assembly graph. Earch read is represented by two nodes: "<read_name>+" and "<read_name>-". 
+/// A node in the overlap graph. Earch read is represented by two nodes: "<read_name>+" and "<read_name>-". 
 /// One for the origininal orientation and one for the reverse complement.
 /// Each node has directed edges to other nodes with associated edge lengths.
 pub struct Node {
@@ -28,6 +27,7 @@ impl Node {
             // multiple edges to the same target
             // currently impossible due to the overlap filtering
             // handling might change in the future to handle this case
+            todo!();
             return;
         }
         self.edges.push((target_node.to_owned(), edge_len));
@@ -46,12 +46,12 @@ impl Node {
     }
 }
 
-/// Assembly graph containing nodes keyed by "<read_name><+/->"
-pub struct AssemblyGraph {
+/// Overlap graph containing nodes keyed by "<read_name><+/->"
+pub struct OverlapGraph {
     pub nodes: HashMap<String, Node>,
 }
 
-impl AssemblyGraph {
+impl OverlapGraph {
     fn new() -> Self {
         Self {
             nodes: HashMap::new(),
@@ -121,13 +121,13 @@ pub fn parse_paf_line(line: &str) -> Option<(String, u32, i64, i64, char, String
     Some((query_name, query_length, query_start, query_end, strand, target_name, target_length, target_start, target_end, num_matching, alignment_block_length, mapq))
 }
 
-/// Build string graph from overlaps
-pub fn create_string_graph(paf_path: &str, max_overhang: u32, overhang_ratio: f64) -> Result<(AssemblyGraph, GraphStats), std::io::Error> {
+/// Build overlap graph from overlaps
+pub fn create_overlap_graph(paf_path: &str, max_overhang: u32, overhang_ratio: f64) -> Result<(OverlapGraph, GraphStats), std::io::Error> {
     
     // read PAF file
     let reader = BufReader::new(File::open(paf_path)?);
 
-    let mut g = AssemblyGraph::new();
+    let mut g = OverlapGraph::new();
     let mut stats = GraphStats::default();
 
     for (line_nr, line) in reader.lines().enumerate() {
