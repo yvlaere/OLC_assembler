@@ -3,6 +3,7 @@ mod create_overlap_graph;
 mod transitive_edge_reduction;
 mod graph_analysis;
 mod compress_graph;
+mod tip_trimming;
 
 use std::env;
 use std::io;
@@ -162,6 +163,13 @@ fn main() -> io::Result<()>{
     for (id, in_d, out_d) in top_branch {
         println!("  {}: in={}, out={}", id, in_d, out_d);
     }
+
+    let removed = tip_trimming::trim_tips(&mut graph, 4);
+    println!("Removed {} tip nodes", removed);
+
+    let tip_lengths = graph_analysis::tip_length_distribution(&graph, 1000);
+    let short_tips = tip_lengths.iter().filter(|&&l| l <= 3).count();
+    println!("Tip count (starts): {}, short tips (<=3): {}", tip_lengths.len(), short_tips);
 
     Ok(())
 }
