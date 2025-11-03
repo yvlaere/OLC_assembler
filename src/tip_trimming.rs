@@ -40,15 +40,41 @@ fn recompute_stats(graph: &crate::create_overlap_graph::OverlapGraph,) -> (
 }
 
 // remove a set of nodes (by id) from the graph and remove references to them in other nodes.
-fn remove_nodes(graph: &mut crate::create_overlap_graph::OverlapGraph, to_remove: &HashSet<String>) {
-    // Remove nodes from map
+// compute reverse-complement node id for oriented node ids ending in '+' or '-'
+fn rc_node(id: &str) -> String {
+    if let Some(last) = id.chars().last() {
+        if last == '+' {
+            let base = &id[..id.len()-1];
+            return format!("{}-", base);
+        } else if last == '-' {
+            let base = &id[..id.len()-1];
+            return format!("{}+", base);
+        }
+    }
+    id.to_string()
+}
+
+// remove a set of nodes (by id) from the graph and remove references to them in other nodes.
+// Also remove reverse-complement counterparts to keep the bigraph synchronized.
+// Returns the number of nodes actually removed (including RC counterparts).
+fn remove_nodes(graph: &mut crate::create_overlap_graph::OverlapGraph, to_remove: &HashSet<String>) -> usize {
+    // expand set to include reverse complements
+    let mut expanded: HashSet<String> = HashSet::new();
     for id in to_remove.iter() {
+        expanded.insert(id.clone());
+        expanded.insert(rc_node(id));
+    }
+
+    // Remove nodes from map
+    for id in expanded.iter() {
         graph.nodes.remove(id);
     }
     // Remove edges pointing to removed nodes
     for (_src, node) in graph.nodes.iter_mut() {
-        node.edges.retain(|(tgt, _len)| !to_remove.contains(tgt));
+        node.edges.retain(|(tgt, _len)| !expanded.contains(tgt));
     }
+
+    expanded.len()
 }
 
 pub fn trim_tips(graph: &mut crate::create_overlap_graph::OverlapGraph, max_tip_nodes: usize,) -> usize {
@@ -66,7 +92,7 @@ pub fn trim_tips(graph: &mut crate::create_overlap_graph::OverlapGraph, max_tip_
     let mut total_removed = 0usize;
 
     loop {
-        let (mut indeg, mut outdeg, edge_mult, preds) = recompute_stats(graph);
+        let (indeg, outdeg, edge_mult, preds) = recompute_stats(graph);
 
         println!("Counter {}: Graph has {} nodes", counter, graph.nodes.len());
         counter += 1;
@@ -138,11 +164,11 @@ pub fn trim_tips(graph: &mut crate::create_overlap_graph::OverlapGraph, max_tip_
                 let last = chain.last().unwrap().clone();
                 // find predecessor(s) of last
                 let pred_list = preds.get(&last).map(|v| v.clone()).unwrap_or_else(Vec::new);
-                let junction = if pred_list.len() == 1 {
-                    pred_list[0].clone()
-                } else {
-                    // no unique predecessor: junction is last (we can't find a proper junction) -> skip
-                    continue;
+                // choose a predecessor that is outside the chain (the junction). If multiple exist, pick the first.
+                let junction_opt = pred_list.into_iter().find(|p| !chain.contains(p));
+                let junction = match junction_opt {
+                    Some(p) => p,
+                    None => continue, // no external predecessor found -> skip
                 };
                 // compute multiplicity of the arc junction -> neighbor_on_chain
                 // neighbor_on_chain is the node in chain that is adjacent to junction; that is the previous element if chain contains it
@@ -190,10 +216,12 @@ pub fn trim_tips(graph: &mut crate::create_overlap_graph::OverlapGraph, max_tip_
                 let succs = graph.nodes.get(&last)
                     .map(|n| n.edges.iter().map(|(t,_len)| t.clone()).collect::<Vec<_>>())
                     .unwrap_or_else(Vec::new);
-                if succs.len() != 1 {
-                    continue;
-                }
-                let junction = succs[0].clone();
+                // pick a successor that is outside the chain (junction). If none, skip.
+                let junction_opt = succs.into_iter().find(|s| !chain.contains(s));
+                let junction = match junction_opt {
+                    Some(s) => s,
+                    None => continue,
+                };
                 // arc multiplicity: arc from neighbor_on_chain -> junction (neighbor_on_chain is last element of chain)
                 let neighbor_on_chain = last.clone();
                 let arc_mult = *edge_mult.get(&(neighbor_on_chain.clone(), junction.clone())).unwrap_or(&0usize);
@@ -217,74 +245,22 @@ pub fn trim_tips(graph: &mut crate::create_overlap_graph::OverlapGraph, max_tip_
 
         println!("Found {} tip candidates for removal consideration", candidates_info.len());
 
-        // For each candidate, we need to check the minority-count criterion:
-        // at the junction node, compare junction_arc_mult to multiplicities of other arcs radiating out of that junction (outgoing arcs).
-        // A candidate is eligible for removal if junction_arc_mult is strictly less than at least one other outgoing arc multiplicity from the junction.
-        // We'll collect only eligible tips.
-        let mut eligible: Vec<TipInfo> = Vec::new();
-        for info in candidates_info.into_iter() {
-            // get all outgoing arcs multiplicities from junction
-            let outgoing: Vec<(String, usize)> = graph.nodes.get(&info.junction).map(|n| n.edges.iter().map(|(t,_len)| {
-                    let m = *edge_mult.get(&(info.junction.clone(), t.clone())).unwrap_or(&0usize);
-                    (t.clone(), m)
-                }).collect())
-                .unwrap_or_else(Vec::new);
-
-            // If there are no outgoing arcs, skip
-            if outgoing.is_empty() {
-                continue;
-            }
-
-            // New overlap-graph-friendly minority test:
-            // Compare the overlap length of the junction->chain arc to the lengths of other outgoing arcs.
-            // If it's substantially shorter than the best alternative (threshold_ratio), consider it minority.
-            let junction_node = graph.nodes.get(&info.junction);
-            if let Some(jn) = junction_node {
-                // neighbor_on_chain is the node in the chain adjacent to the junction (furthest from the tip)
-                let neighbor_on_chain = info.chain.last().unwrap().clone();
-                // find length of junction -> neighbor_on_chain
-                let junction_arc_len = jn.edges.iter()
-                    .find(|(t, _)| t == &neighbor_on_chain)
-                    .map(|(_, l)| *l as usize)
-                    .unwrap_or(0);
-
-                // collect lengths of other outgoing arcs from junction
-                let mut other_lens: Vec<usize> = jn.edges.iter()
-                    .filter(|(t, _)| t != &neighbor_on_chain)
-                    .map(|(_, l)| *l as usize)
-                    .collect();
-
-                // If there are no other outgoing arcs, skip
-                if !other_lens.is_empty() && junction_arc_len > 0 {
-                    let max_other = *other_lens.iter().max().unwrap();
-                    // threshold ratio: if junction arc is e.g. < 0.8 * max_other, call it minority
-                    let threshold_ratio = 0.95_f64;
-                    if (junction_arc_len as f64) < (max_other as f64) * threshold_ratio {
-                        eligible.push(info);
-                        continue;
-                    }
-                }
-
-                // Fallback: if multiplicities exist >1, use the original multiplicity test
-                let mut is_minority_by_mult = false;
-                for (_tgt, m) in outgoing.iter() {
-                    if *m > info.junction_arc_mult {
-                        is_minority_by_mult = true;
-                        break;
-                    }
-                }
-                if is_minority_by_mult {
-                    eligible.push(info);
-                }
-            }
-        }
+        // Previously we applied a minority-count / length check at junctions to select eligible tips.
+        // That test caused many legitimate tips to be kept; remove that complexity and treat all traced
+        // candidates as eligible (subject to basic sanity checks later).
+        let mut eligible: Vec<TipInfo> = candidates_info.into_iter()
+            .filter(|info| {
+                // require the junction node still exists and has at least one outgoing arc
+                graph.nodes.get(&info.junction).map(|jn| !jn.edges.is_empty()).unwrap_or(false)
+            })
+            .collect();
 
         if eligible.is_empty() {
-            println!("No tip candidates eligible for removal after minority check, stopping.");
+            println!("No tip candidates eligible for removal, stopping.");
             break;
         }
 
-        println!("{} tip candidates eligible for removal after minority check", eligible.len());
+        println!("{} tip candidates eligible for removal", eligible.len());
 
         // Sort eligible by junction_arc_mult ascending (Velvet removes low multiplicity first)
         eligible.sort_by_key(|x| x.junction_arc_mult);
@@ -348,11 +324,10 @@ pub fn trim_tips(graph: &mut crate::create_overlap_graph::OverlapGraph, max_tip_
             break;
         }
 
-        // Perform actual removal: delete nodes and purge incoming edges
-        let batch = removed_in_this_round.clone();
-        remove_nodes(graph, &batch);
-        let removed_count = batch.len();
-        total_removed += removed_count;
+    // Perform actual removal: delete nodes and purge incoming edges
+    let batch = removed_in_this_round.clone();
+    let removed_count = remove_nodes(graph, &batch);
+    total_removed += removed_count;
 
         // After removals, loop again (recompute stats in next iteration)
     } // end main loop

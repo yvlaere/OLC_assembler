@@ -45,7 +45,7 @@ pub fn check_synchronization(g: &OverlapGraph) {
 
         // check that every outgoing edge has a counterpart in the reverse complement node
         if let Some(node) = g.nodes.get(n) {
-            for (t, len) in &node.edges {
+            for (t, _) in &node.edges {
                 let t_rc = rc_node(t);
 
                 // get the reverse complement node for t_rc
@@ -168,7 +168,6 @@ pub fn reduce_transitive_edges(g: &mut OverlapGraph, fuzz: u32) {
     } // end for n1
 
     // 6) Actually remove reduced edges from the graph (and remove reverse-complement counterparts if present)
-    let mut nr_reduced: usize = 0;
     
     // Collect all edges to remove first
     let mut edges_to_remove: Vec<(String, String)> = Vec::new();

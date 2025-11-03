@@ -27,7 +27,8 @@ impl Node {
             // multiple edges to the same target
             // currently impossible due to the overlap filtering
             // handling might change in the future to handle this case
-            todo!();
+            // Silently ignore duplicate edges but log for debugging
+            eprintln!("Warning: duplicate edge {} -> {} ignored", self.node_id, target_node);
             return;
         }
         self.edges.push((target_node.to_owned(), edge_len));
