@@ -14,8 +14,9 @@ pub fn weakly_connected_components(graph: &crate::create_overlap_graph::OverlapG
 
     // Populate adjacency using outgoing edges (and add reverse edges to make undirected)
     for (source_id, node) in &graph.nodes {
-        // Each edge is a tuple of (target_id, length)
-        for (target_id, _length) in &node.edges {
+        // Each edge is stored as EdgeInfo
+        for e in &node.edges {
+            let target_id = &e.target_id;
             adjacency_list.entry(source_id.clone()).or_default().push(target_id.clone());
             adjacency_list.entry(target_id.clone()).or_default().push(source_id.clone());
         }
@@ -73,8 +74,8 @@ pub fn analyze_degrees(graph: &crate::create_overlap_graph::OverlapGraph) -> (Ha
     // Count indegrees first
     let mut indegrees: HashMap<String, usize> = HashMap::new();
     for node in graph.nodes.values() {
-        for (target, _) in &node.edges {
-            *indegrees.entry(target.clone()).or_default() += 1;
+        for e in &node.edges {
+            *indegrees.entry(e.target_id.clone()).or_default() += 1;
         }
     }
     
@@ -95,8 +96,8 @@ pub fn compressible_node_stats(graph: &crate::create_overlap_graph::OverlapGraph
     // compute indegrees
     let mut indegrees: HashMap<String, usize> = HashMap::new();
     for (src, node) in &graph.nodes {
-        for (tgt, _) in &node.edges {
-            *indegrees.entry(tgt.clone()).or_default() += 1;
+        for e in &node.edges {
+            *indegrees.entry(e.target_id.clone()).or_default() += 1;
         }
         // ensure src exists in map
         indegrees.entry(src.clone()).or_default();
@@ -122,8 +123,8 @@ pub fn tip_length_distribution(graph: &crate::create_overlap_graph::OverlapGraph
     // build indegrees first
     let mut indegrees: HashMap<String, usize> = HashMap::new();
     for (src, node) in &graph.nodes {
-        for (tgt, _) in &node.edges {
-            *indegrees.entry(tgt.clone()).or_default() += 1;
+        for e in &node.edges {
+            *indegrees.entry(e.target_id.clone()).or_default() += 1;
         }
         indegrees.entry(src.clone()).or_default();
     }
@@ -153,7 +154,7 @@ pub fn tip_length_distribution(graph: &crate::create_overlap_graph::OverlapGraph
             if node.edges.len() != 1 { break; }
 
             // move to next node
-            let next = node.edges[0].0.clone();
+            let next = node.edges[0].target_id.clone();
             len += 1;
             steps += 1;
 
@@ -174,8 +175,8 @@ pub fn branching_summary(graph: &crate::create_overlap_graph::OverlapGraph, top_
     // compute indegrees
     let mut indegrees: HashMap<String, usize> = HashMap::new();
     for (src, node) in &graph.nodes {
-        for (tgt, _) in &node.edges {
-            *indegrees.entry(tgt.clone()).or_default() += 1;
+        for e in &node.edges {
+            *indegrees.entry(e.target_id.clone()).or_default() += 1;
         }
         indegrees.entry(src.clone()).or_default();
     }

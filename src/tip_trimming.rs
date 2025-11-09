@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashSet};
 use crate::create_overlap_graph::OverlapGraph;
 
 /// Return codes for node classification
@@ -30,7 +30,7 @@ fn out_targets(graph: &OverlapGraph, n: &str) -> Vec<String> {
     if let Some(node) = graph.nodes.get(n) {
         node.edges
             .iter()
-            .map(|(tgt, _len)| tgt.clone())
+            .map(|e| e.target_id.clone())
             .filter(|tgt| graph.nodes.contains_key(tgt))
             .collect()
     } 
@@ -80,60 +80,55 @@ fn node_classification(graph: &OverlapGraph, n: &str) -> (NodeType, Option<Strin
     (NodeType::Mergeable, Some(next))
 }
 
-/// Extend along mergeable links starting from `start_v` up to `max_ext` steps.
-/// Mirrors miniasm's asg_extend:
-/// - collects oriented node ids (strings) visited into `chain` (first entry is start_v),
+/// Extend along mergeable links starting from `start_n` up to `max_ext` steps.
+/// - collects oriented node ids (strings) visited into `chain` (first entry is start_n),
 /// - returns the termination NodeType (MERGEABLE if we used up the budget or didn't hit a non-mergeable state),
-/// - and the chain vector (the sequence of oriented vertices visited).
-fn asg_extend(graph: &OverlapGraph, start_v: &str, max_ext: usize) -> (NodeType, Vec<String>) {
+/// - and the chain vector (the sequence of oriented nodes visited).
+fn extend(graph: &OverlapGraph, start_n: &str, max_ext: usize) -> (NodeType, Vec<String>) {
     let mut chain: Vec<String> = Vec::new();
-    chain.push(start_v.to_string());
-    let mut v = start_v.to_string();
+    chain.push(start_n.to_string());
+    let mut n = start_n.to_string();
     let mut steps_left = max_ext;
 
     loop {
-        let (ret, maybe_next) = node_classification(graph, &v);
+        // classify current node
+        let (ret, maybe_next) = node_classification(graph, &n);
         if ret != NodeType::Mergeable {
             return (ret, chain);
         }
+
         // Mergeable: get next node and continue
         let next = match maybe_next {
             Some(n) => n,
             None => return (NodeType::Mergeable, chain), // defensive; should not happen when Mergeable
         };
+
+        // reached budget -> treat as MERGEABLE (do not delete)
         if steps_left == 0 {
-            // reached budget -> treat as MERGEABLE (do not delete)
             return (NodeType::Mergeable, chain);
         }
+
+        // advance
         chain.push(next.clone());
-        v = next;
+        n = next;
         steps_left -= 1;
     }
 }
 
 /// Delete a set of sequence IDs (both orientations) from the graph and remove incident edges.
-/// Input `to_delete_seqs` are *oriented* node ids; we delete the whole sequence (both + and -).
+/// Input `to_delete_seqs` are oriented node ids. The whole sequence (both + and -) gets deleted.
 /// Returns number of nodes (oriented ids) actually removed (counting both orientations).
 fn delete_vertices_and_cleanup(graph: &mut OverlapGraph, to_delete_oriented: &HashSet<String>) -> usize {
-    // Expand to include rc counterparts and compute sequence base ids to delete
-    let mut seq_bases_to_delete: HashSet<String> = HashSet::new();
+    
+    // Initialize set of oriented nodes to remove
+    let mut oriented_to_remove: HashSet<String> = HashSet::new();
 
     for oriented in to_delete_oriented.iter() {
-        // strip trailing orientation char to get base (if present)
-        if oriented.ends_with('+') || oriented.ends_with('-') {
-            let base = oriented[..oriented.len()-1].to_string();
-            seq_bases_to_delete.insert(base);
-        } else {
-            // fallback: treat full id as base
-            seq_bases_to_delete.insert(oriented.clone());
-        }
-    }
-
-    // Build set of oriented ids to remove (both + and - for each base)
-    let mut oriented_to_remove: HashSet<String> = HashSet::new();
-    for base in seq_bases_to_delete.iter() {
-        oriented_to_remove.insert(format!("{}+", base));
-        oriented_to_remove.insert(format!("{}-", base));
+        
+        // add to set of nodes to delete
+        oriented_to_remove.insert(oriented.clone());
+        // add rc counterpart
+        oriented_to_remove.insert(rc_node(oriented));
     }
 
     // Delete nodes from graph.nodes
@@ -143,49 +138,53 @@ fn delete_vertices_and_cleanup(graph: &mut OverlapGraph, to_delete_oriented: &Ha
 
     // Remove edges pointing to removed nodes
     for (_src, node) in graph.nodes.iter_mut() {
-        node.edges.retain(|(tgt, _len)| !oriented_to_remove.contains(tgt));
+        node.edges.retain(|e| !oriented_to_remove.contains(&e.target_id));
     }
 
     oriented_to_remove.len()
 }
 
-/// Delete a single directed arc src -> tgt if present.
-/// Returns true if an arc was removed.
-fn delete_arc(graph: &mut OverlapGraph, src: &str, tgt: &str) -> bool {
+/// Delete a single directed edge src -> tgt if present.
+/// Returns true if an edge was removed.
+fn delete_edge(graph: &mut OverlapGraph, src: &str, tgt: &str) -> bool {
     if let Some(node) = graph.nodes.get_mut(src) {
         let before = node.edges.len();
-        node.edges.retain(|(t, _len)| t != tgt);
+        node.edges.retain(|e| e.target_id != tgt);
         return node.edges.len() != before;
     }
     false
 }
 
-/// CUT TIP: replicate miniasm's asg_cut_tip behavior.
-/// - max_ext: extension budget in number of steps (use small numbers like 4)
+/// tip cutting: remove any tip nodes and their reverse-complements from the graph.
+/// - max_ext: extension budget in number of steps
 /// returns number of oriented nodes removed (counting both orientations)
-pub fn cut_tip(graph: &mut OverlapGraph, max_ext: usize) -> usize {
+pub fn cut_tips(graph: &mut OverlapGraph, max_ext: usize) -> usize {
     let mut removed_count = 0usize;
-    // We'll collect to-delete oriented nodes across the full scan and remove them in a batch (like miniasm)
+
+    // We'll collect to-delete oriented nodes across the full scan and remove them in a batch
     let mut to_delete: HashSet<String> = HashSet::new();
 
-    // iterate over a snapshot of current node keys (we must not mutate while iterating)
+    // iterate over a snapshot of current node keys (no mutation while iterating)
     let keys: Vec<String> = graph.nodes.keys().cloned().collect();
-    for v in keys.into_iter() {
+    for n in keys.into_iter() {
+
         // Skip nodes that may already be deleted
-        if !graph.nodes.contains_key(&v) {
+        if !graph.nodes.contains_key(&n) {
             continue;
         }
-        // Check if v is a TIP (only consider tips)
-        let (kind, _maybe_next) = node_classification(graph, &v);
+        // Check if n is a TIP (only consider tips)
+        let (kind, _maybe_next) = node_classification(graph, &n);
         if kind != NodeType::Tip {
             continue;
         }
-        // Attempt to extend from v
-        let (ret, chain) = asg_extend(graph, &v, max_ext);
-        // If extend returned Mergeable, skip deletion (chain may be long)
+
+        // Attempt to extend from n
+        let (ret, chain) = extend(graph, &n, max_ext);
+        // If extend returned Mergeable, skip deletion (chain may be long, not a short tip)
         if ret == NodeType::Mergeable {
             continue;
         }
+
         // Otherwise the chain is small/terminating -> mark chain nodes for deletion
         for oid in chain.into_iter() {
             to_delete.insert(oid);
@@ -200,18 +199,19 @@ pub fn cut_tip(graph: &mut OverlapGraph, max_ext: usize) -> usize {
     removed_count
 }
 
-/// CUT INTERNAL: replicate asg_cut_internal
+/*
+/// cut internal:
 /// remove short internal sequences that are bracketed by multi-neighbor conditions.
 pub fn cut_internal(graph: &mut OverlapGraph, max_ext: usize) -> usize {
     let mut removed_count = 0usize;
     let mut to_delete: HashSet<String> = HashSet::new();
 
     let keys: Vec<String> = graph.nodes.keys().cloned().collect();
-    for v in keys.into_iter() {
-        if !graph.nodes.contains_key(&v) { continue; }
-        let (kind, _maybe_next) = node_classification(graph, &v);
+    for n in keys.into_iter() {
+        if !graph.nodes.contains_key(&n) { continue; }
+        let (kind, _maybe_next) = node_classification(graph, &n);
         if kind != NodeType::MultiNei { continue; }
-        let (ret, chain) = asg_extend(graph, &v, max_ext);
+        let (ret, chain) = extend(graph, &n, max_ext);
         if ret != NodeType::MultiNei { continue; }
         for oid in chain.into_iter() { to_delete.insert(oid); }
     }
@@ -223,66 +223,58 @@ pub fn cut_internal(graph: &mut OverlapGraph, max_ext: usize) -> usize {
     removed_count
 }
 
-/// CUT BILOOP: replicate asg_cut_biloop.
-/// This will remove one arc of a small bi-loop if the overlap lengths indicate one side is weaker.
+/// cut biloop:
+/// This will remove one edge of a small bi-loop if the overlap lengths indicate one side is weaker.
 pub fn cut_biloop(graph: &mut OverlapGraph, max_ext: usize) -> usize {
     let mut removed = 0usize;
     let keys: Vec<String> = graph.nodes.keys().cloned().collect();
 
-    for v in keys.into_iter() {
-        if !graph.nodes.contains_key(&v) { continue; }
-        let (kind_v, _mn) = node_classification(graph, &v);
-        if kind_v != NodeType::MultiNei { continue; }
+    for n in keys.into_iter() {
+        if !graph.nodes.contains_key(&n) { continue; }
+        let (type_n, _mn) = node_classification(graph, &n);
+        if type_n != NodeType::MultiNei { continue; }
 
-        let (ret, chain) = asg_extend(graph, &v, max_ext);
+        let (ret, chain) = extend(graph, &n, max_ext);
         if ret != NodeType::MultiOut { continue; }
-        // x = last entry in chain ^ 1 (flip orientation)
         if chain.is_empty() { continue; }
         let last = chain.last().unwrap().clone();
         let x = rc_node(&last); // flip orientation for x
 
-        // find the unique (non-deleted) outgoing neighbor w of v
-        let outs_v = out_targets(graph, &v);
-        if outs_v.is_empty() { continue; }
-        // In miniasm the loop assumes there is exactly one outgoing non-deleted arc for v in this context.
-        // We'll pick the first valid one (consistent with the original).
-        let w = outs_v[0].clone();
+        // find the unique (non-deleted) outgoing neighbor w of n
+        let outs_n = out_targets(graph, &n);
+        if outs_n.is_empty() { continue; }
+        let w = outs_n[0].clone();
 
-        // inspect outgoing arcs of w to find overlap lengths w->v and w->x
-        let mut ov: u32 = 0;
+        // inspect outgoing edges of w to find overlap lengths w -> n and w -> x
+        let mut on: u32 = 0;
         let mut ox: u32 = 0;
-        if let Some(node_w) = graph.nodes.get(&w) {
-            for (tgt, len) in node_w.edges.iter() {
-                if tgt == &x {
-                    ox = *len;
+            if let Some(node_w) = graph.nodes.get(&w) {
+            for e in node_w.edges.iter() {
+                if e.target_id == x {
+                    ox = e.edge_len;
                 }
-                if tgt == &v {
-                    ov = *len;
+                if e.target_id == n {
+                    on = e.edge_len;
                 }
             }
         }
 
-        if ov == 0 && ox == 0 {
+        if on == 0 && ox == 0 {
             continue;
         }
 
-        if ov > ox {
-            // delete the arc w->x and its reverse complement x^1 -> w^1 (here rc_node flips orientation)
-            if delete_arc(graph, &w, &x) {
-                // also delete the reverse complement arc: rc(x) -> rc(w)
+        if on > ox {
+            // delete the edge w->x and its reverse complement rc(x) -> rc(w)
+            if delete_edge(graph, &w, &x) {
+                // also delete the reverse complement edge: rc(x) -> rc(w)
                 let rc_x = rc_node(&x);
                 let rc_w = rc_node(&w);
-                delete_arc(graph, &rc_x, &rc_w);
+                delete_edge(graph, &rc_x, &rc_w);
                 removed += 1;
             }
         }
     }
 
-    if removed > 0 {
-        // After arc deletions we should also purge any isolated sequences if desired.
-        // For parity with miniasm, you could call a cleanup routine here that removes orphan sequences.
-        // We simply return the number of removed bi-loop arcs.
-    }
-
     removed
 }
+*/

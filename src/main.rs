@@ -42,6 +42,7 @@ fn main() -> io::Result<()>{
     let node_count = graph.nodes.len();
     let node_to_edge_ratio = node_count as f64 / edge_count as f64;
     println!("Graph nodes: {}", node_count);
+    println!("Graph edges: {}", edge_count);
     println!("Node to edge ratio: {:.4}", node_to_edge_ratio);
 
     // Check that the bigraph is synchronized
@@ -57,7 +58,8 @@ fn main() -> io::Result<()>{
     let mut iteration = 1;
     let mut prev_node_count = graph.nodes.len() + 1;  // Ensure first iteration runs
 
-    while graph.nodes.len() < prev_node_count {
+    for i in 0..10 {
+    //while graph.nodes.len() < prev_node_count {
         prev_node_count = graph.nodes.len();
         println!("\n=== Cleanup Iteration {} ===", iteration);
 
@@ -71,11 +73,11 @@ fn main() -> io::Result<()>{
         let removed_bubbles = bubble_removal::remove_bubbles(&mut graph, max_bubble_len, min_support_ratio);
         println!("Removed {} bubble nodes (including RCs)", removed_bubbles);
 
-        // 3) Remove small components (size < 4)
+        // 3) Remove small components (size < 2)
         let components = graph_analysis::weakly_connected_components(&graph);
         let mut comp_nodes_to_remove: HashSet<String> = HashSet::new();
         for component in components.iter() {
-            if component.len() < 4 {
+            if component.len() < 2 {
                 for nid in component.iter() {
                     comp_nodes_to_remove.insert(nid.clone());
                 }
@@ -93,7 +95,7 @@ fn main() -> io::Result<()>{
                 graph.nodes.remove(rc.as_str());
             }
         }
-        println!("Removed {} oriented nodes from small components (<4)", small_comp_count);
+        println!("Removed {} oriented nodes from small components (<2)", small_comp_count);
 
         // 4) Tip trimming
         let tip_lengths = graph_analysis::tip_length_distribution(&graph, 1000);

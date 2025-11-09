@@ -45,14 +45,15 @@ pub fn check_synchronization(g: &OverlapGraph) {
 
         // check that every outgoing edge has a counterpart in the reverse complement node
         if let Some(node) = g.nodes.get(n) {
-            for (t, _) in &node.edges {
+            for e in &node.edges {
+                let t = &e.target_id;
                 let t_rc = rc_node(t);
 
                 // get the reverse complement node for t_rc
                 if let Some(rc_node) = g.nodes.get(&t_rc) {
                     // Check if there's a matching edge from t_rc to n_rc
                     assert!(
-                        rc_node.edges.iter().any(|(target, _)| target == &n_rc),
+                        rc_node.edges.iter().any(|e| e.target_id == n_rc),
                         "Corresponding edge not found for {}. The bigraph is not synchronized.",
                         n
                     );
@@ -102,18 +103,20 @@ pub fn reduce_transitive_edges(g: &mut OverlapGraph, fuzz: u32) {
         }
 
         // 1) mark all direct neighbors of n1 as InPlay
-        for (n2, _) in out_edges.iter() {
-            mark.insert(n2.clone(), Mark::InPlay);
+        for e in out_edges.iter() {
+            mark.insert(e.target_id.clone(), Mark::InPlay);
         }
 
         // 2) compute longest outgoing edge length from n1 (last after sort) + fuzz
         let longest = {
-            let last_len = out_edges.last().unwrap().1 as u64;
+            let last_len = out_edges.last().unwrap().edge_len as u64;
             last_len + fuzz as u64
         };
 
         // 3) For each n2 (outgoing from n1), check n2->n3 edges
-        for (n2, len_n1n2) in out_edges.iter() {
+        for e_n2 in out_edges.iter() {
+            let n2 = &e_n2.target_id;
+            let len_n1n2 = e_n2.edge_len;
 
             // skip n2 if not InPlay
             if mark.get(n2).copied() != Some(Mark::InPlay) {
@@ -122,9 +125,11 @@ pub fn reduce_transitive_edges(g: &mut OverlapGraph, fuzz: u32) {
 
             // get node n2
             if let Some(node2) = g.nodes.get(n2) {
-                for (n3, len_n2n3) in node2.edges.iter() {
+                for e_n3 in node2.edges.iter() {
+                    let n3 = &e_n3.target_id;
+                    let len_n2n3 = e_n3.edge_len;
                     // if path length n1->n2->n3 <= longest then candidate for elimination
-                    let path_len = *len_n2n3 as u64 + *len_n1n2 as u64;
+                    let path_len = len_n2n3 as u64 + len_n1n2 as u64;
                     if path_len <= longest {
                         if mark.get(n3).copied() == Some(Mark::InPlay) {
                             mark.insert(n3.clone(), Mark::Eliminated);
@@ -136,16 +141,19 @@ pub fn reduce_transitive_edges(g: &mut OverlapGraph, fuzz: u32) {
 
         // 4) Additional rule: if n2->n3 is very small (< fuzz) or is the smallest outgoing edge of n2,
         // then eliminate n3 if it is InPlay.
-        for (n2, _) in out_edges.iter() {
+        for e in out_edges.iter() {
+            let n2 = &e.target_id;
             if let Some(node2) = g.nodes.get(n2) {
                 // find min outgoing length for n2, if any
-                let min_len_opt = node2.edges.iter().map(|(_, l)| *l).min();
+                let min_len_opt = node2.edges.iter().map(|e| e.edge_len).min();
 
-                for (n3, len_n2n3) in node2.edges.iter() {
-                    let do_eliminate = if *len_n2n3 < fuzz {
+                for e_n3 in node2.edges.iter() {
+                    let n3 = &e_n3.target_id;
+                    let len_n2n3 = e_n3.edge_len;
+                    let do_eliminate = if len_n2n3 < fuzz {
                         true
                     } else if let Some(min_len) = min_len_opt {
-                        *len_n2n3 == min_len
+                        len_n2n3 == min_len
                     } else {
                         false
                     };
@@ -158,7 +166,8 @@ pub fn reduce_transitive_edges(g: &mut OverlapGraph, fuzz: u32) {
         }
 
         // 5) Mark edges from n1 to eliminated nodes for removal, then reset marks of the direct neighbors to vacant
-        for (n2, _) in out_edges.iter() {
+        for e_n2 in out_edges.iter() {
+            let n2 = &e_n2.target_id;
             if mark.get(n2).copied() == Some(Mark::Eliminated) {
                 reduced.insert((n1.clone(), n2.clone()));
             }
@@ -174,7 +183,8 @@ pub fn reduce_transitive_edges(g: &mut OverlapGraph, fuzz: u32) {
     
     for n1 in g.nodes.keys() {
         if let Some(node) = g.nodes.get(n1) {
-            for (n2, _) in &node.edges {
+            for e in &node.edges {
+                let n2 = &e.target_id;
                 if reduced.contains(&(n1.clone(), n2.clone())) {
                     // Add both the edge and its reverse complement
                     edges_to_remove.push((n1.clone(), n2.clone()));

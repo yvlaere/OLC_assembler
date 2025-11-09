@@ -7,10 +7,18 @@ use std::io::{BufRead, BufReader};
 /// A node in the overlap graph. Earch read is represented by two nodes: "<read_name>+" and "<read_name>-". 
 /// One for the origininal orientation and one for the reverse complement.
 /// Each node has directed edges to other nodes with associated edge lengths.
+// Edge info containing all the metrics we track
+#[derive(Clone)]
+pub struct EdgeInfo {
+    pub target_id: String,
+    pub edge_len: u32,
+    pub overlap_len: u32,
+    pub identity: f64,
+}
+
 pub struct Node {
     node_id: String,
-    // edges: vector of (target_node_id, edge_length)
-    pub edges: Vec<(String, u32)>,
+    pub edges: Vec<EdgeInfo>,
 }
 
 impl Node {
@@ -22,8 +30,8 @@ impl Node {
     }
 
     /// Add a directed edge to this node. If an edge to the target already exists, we ignore (avoid duplicates).
-    fn add_edge(&mut self, target_node: &str, edge_len: u32) {
-        if self.edges.iter().any(|(t, _)| t == target_node) {
+    fn add_edge(&mut self, target_node: &str, edge_len: u32, overlap_len: u32, identity: f64) {
+        if self.edges.iter().any(|e| e.target_id == target_node) {
             // multiple edges to the same target
             // currently impossible due to the overlap filtering
             // handling might change in the future to handle this case
@@ -31,19 +39,24 @@ impl Node {
             eprintln!("Warning: duplicate edge {} -> {} ignored", self.node_id, target_node);
             return;
         }
-        self.edges.push((target_node.to_owned(), edge_len));
+        self.edges.push(EdgeInfo {
+            target_id: target_node.to_owned(),
+            edge_len,
+            overlap_len,
+            identity,
+        });
     }
 
     /// Remove a directed edge to the node with target_node id.
     pub fn remove_edge(&mut self, target_node: &str) {
-        if let Some(pos) = self.edges.iter().position(|(t, _)| t == target_node) {
+        if let Some(pos) = self.edges.iter().position(|e| e.target_id == target_node) {
             self.edges.swap_remove(pos);
         }
     }
 
     /// Sort edges by length (ascending).
     pub fn sort_edges(&mut self) {
-        self.edges.sort_unstable_by_key(|(_, len)| *len);
+        self.edges.sort_unstable_by_key(|e| e.edge_len);
     }
 }
 
@@ -64,14 +77,14 @@ impl OverlapGraph {
         self.nodes.entry(node_id.clone()).or_insert_with(|| Node::new(node_id));
     }
 
-    /// Add a directed edge from from_id to to_id with given edge length.
-    fn add_edge(&mut self, from_id: &str, to_id: &str, edge_len: u32) {
+    /// Add a directed edge from from_id to to_id with given edge length and metrics.
+    fn add_edge(&mut self, from_id: &str, to_id: &str, edge_len: u32, overlap_len: u32, identity: f64) {
         // ensure nodes exist
         if !self.nodes.contains_key(from_id) || !self.nodes.contains_key(to_id) {
             panic!("add_edge: nodes must exist before adding edge");
         }
         if let Some(node) = self.nodes.get_mut(from_id) {
-            node.add_edge(to_id, edge_len);
+            node.add_edge(to_id, edge_len, overlap_len, identity);
         }
     }
 
@@ -144,7 +157,7 @@ pub fn create_overlap_graph(paf_path: &str, max_overhang: u32, overhang_ratio: f
             }
         };
 
-        let (query_name, query_length, query_start, query_end, strand, target_name, target_length, target_start, target_end, _num_matching, _alignment_block_length, _mapq) = parsed;
+    let (query_name, query_length, query_start, query_end, strand, target_name, target_length, target_start, target_end, num_matching, alignment_block_length, _mapq) = parsed;
 
         // use i64 for arithmetic because we may subtract and want to allow signed intermediate
         let b1 = query_start;
@@ -215,7 +228,9 @@ pub fn create_overlap_graph(paf_path: &str, max_overhang: u32, overhang_ratio: f
             let edge1_len_i64 = b1 - b2;
             if edge1_len_i64 >= 0 {
                 let edge1_len = edge1_len_i64 as u32;
-                g.add_edge(&q_plus, &t_orient, edge1_len);
+                let overlap_len = overlap_length as u32;
+                let identity = if alignment_block_length == 0 { 0.0 } else { num_matching as f64 / alignment_block_length as f64 };
+                g.add_edge(&q_plus, &t_orient, edge1_len, overlap_len, identity);
             }
 
             // reverse complement counterpart:
@@ -229,8 +244,10 @@ pub fn create_overlap_graph(paf_path: &str, max_overhang: u32, overhang_ratio: f
             let edge2_len_i64 = (l2 - e2) - (l1 - e1);
             if edge2_len_i64 >= 0 {
                 let edge2_len = edge2_len_i64 as u32;
+                let overlap_len = overlap_length as u32;
+                let identity = if alignment_block_length == 0 { 0.0 } else { num_matching as f64 / alignment_block_length as f64 };
                 // direction: t_rc -> q_minus
-                g.add_edge(&t_rc, &q_minus, edge2_len);
+                g.add_edge(&t_rc, &q_minus, edge2_len, overlap_len, identity);
             }
         } else {
             // second to first overlap (target -> query)
@@ -245,7 +262,9 @@ pub fn create_overlap_graph(paf_path: &str, max_overhang: u32, overhang_ratio: f
             if edge1_len_i64 >= 0 {
                 let edge1_len = edge1_len_i64 as u32;
                 // direction t -> q
-                g.add_edge(&t_orient, &q_plus, edge1_len);
+                let overlap_len = overlap_length as u32;
+                let identity = if alignment_block_length == 0 { 0.0 } else { num_matching as f64 / alignment_block_length as f64 };
+                g.add_edge(&t_orient, &q_plus, edge1_len, overlap_len, identity);
             }
 
             // reverse complement counterpart:
@@ -259,7 +278,9 @@ pub fn create_overlap_graph(paf_path: &str, max_overhang: u32, overhang_ratio: f
             if edge2_len_i64 >= 0 {
                 let edge2_len = edge2_len_i64 as u32;
                 // direction q_minus -> t_rc
-                g.add_edge(&q_minus, &t_rc, edge2_len);
+                let overlap_len = overlap_length as u32;
+                let identity = if alignment_block_length == 0 { 0.0 } else { num_matching as f64 / alignment_block_length as f64 };
+                g.add_edge(&q_minus, &t_rc, edge2_len, overlap_len, identity);
             }
         }
     }

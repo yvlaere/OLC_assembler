@@ -14,7 +14,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 /// - Perform a bounded BFS from v and from w (depth limited by `max_bubble_len`) to
 ///   discover meeting nodes m where the two searches converge.
 /// - For the best meeting node (smallest combined depth), reconstruct the two
-///   u->...->m paths, compute a simple path score (sum of edge lengths) and pick
+///   u->...->m paths, compute a simple path score (number of nodes) and pick
 ///   the higher-scoring path to keep. If the higher score is at least
 ///   `min_support_ratio * lower_score` (e.g. 1.1 to require 10% stronger), then the
 ///   lower-scoring path is removed (internal nodes removed, excluding u and m).
@@ -40,10 +40,18 @@ fn rc_node(id: &str) -> String {
     }
 }
 
+/// Path metrics for scoring
+#[derive(Clone, Default)]
+struct PathMetrics {
+    read_count: u32,
+    total_overlap_len: u32,
+    avg_identity: f64,
+}
+
 /// Bounded BFS from a start node. Returns maps:
 /// - parent: node -> predecessor node (None for the start node)
 /// - depth: node -> depth (start has depth 0)
-/// - score: node -> summed-edge-length from start to that node (u64)
+/// - metrics: node -> accumulated path metrics
 fn bfs_limited(
     graph: &crate::create_overlap_graph::OverlapGraph,
     start: &str,
@@ -51,18 +59,25 @@ fn bfs_limited(
 ) -> (
     HashMap<String, Option<String>>,
     HashMap<String, usize>,
-    HashMap<String, u64>,
+    HashMap<String, PathMetrics>,
 ) {
+
+    // initialize
     let mut parent: HashMap<String, Option<String>> = HashMap::new();
     let mut depth: HashMap<String, usize> = HashMap::new();
-    let mut score: HashMap<String, u64> = HashMap::new();
+    let mut metrics: HashMap<String, PathMetrics> = HashMap::new();
 
     let mut q: VecDeque<String> = VecDeque::new();
     parent.insert(start.to_string(), None);
     depth.insert(start.to_string(), 0);
-    score.insert(start.to_string(), 0u64);
+    metrics.insert(start.to_string(), PathMetrics {
+        read_count: 1,
+        total_overlap_len: 0,
+        avg_identity: 1.0,
+    });
     q.push_back(start.to_string());
 
+    // BFS loop
     while let Some(cur) = q.pop_front() {
         let cur_depth = *depth.get(&cur).unwrap_or(&0);
         if cur_depth >= max_depth {
@@ -70,20 +85,34 @@ fn bfs_limited(
         }
         // expand neighbours
         if let Some(node) = graph.nodes.get(&cur) {
-            for (tgt, len) in &node.edges {
-                // if unseen, record parent/depth/score and enqueue
-                if !depth.contains_key(tgt) {
-                    parent.insert(tgt.clone(), Some(cur.clone()));
-                    depth.insert(tgt.clone(), cur_depth + 1);
-                    let parent_score = *score.get(&cur).unwrap_or(&0);
-                    score.insert(tgt.clone(), parent_score + (*len as u64));
-                    q.push_back(tgt.clone());
+            for edge in &node.edges {
+                // if unseen, record parent/depth/metrics and enqueue
+                if !depth.contains_key(&edge.target_id) {
+                    parent.insert(edge.target_id.clone(), Some(cur.clone()));
+                    depth.insert(edge.target_id.clone(), cur_depth + 1);
+                    
+                    // Update path metrics
+                    let mut new_metrics = metrics.get(&cur).cloned().unwrap_or_default();
+                    new_metrics.read_count += 1;
+                    new_metrics.total_overlap_len += edge.overlap_len;
+                    // Update running average of identity
+                    let old_weight = new_metrics.total_overlap_len as f64 - edge.overlap_len as f64;
+                    let new_identity = if old_weight > 0.0 {
+                        (new_metrics.avg_identity * old_weight + edge.identity * edge.overlap_len as f64) 
+                        / new_metrics.total_overlap_len as f64
+                    } else {
+                        edge.identity
+                    };
+                    new_metrics.avg_identity = new_identity;
+                    
+                    metrics.insert(edge.target_id.clone(), new_metrics);
+                    q.push_back(edge.target_id.clone());
                 }
             }
         }
     }
 
-    (parent, depth, score)
+    (parent, depth, metrics)
 }
 
 /// Reconstruct path from `start` to `target` using the parent map returned by `bfs_limited`.
@@ -127,7 +156,7 @@ fn remove_nodes_rc_aware(
 
     // purge incoming edges to removed nodes
     for (_src, node) in graph.nodes.iter_mut() {
-        node.edges.retain(|(tgt, _)| !expanded.contains(tgt));
+        node.edges.retain(|e| !expanded.contains(&e.target_id));
     }
 
     expanded.len()
@@ -159,7 +188,7 @@ pub fn remove_bubbles(
     for u in node_keys.iter() {
         // get outgoing neighbors (clone so we don't borrow across mutation)
         let outs = match graph.nodes.get(u) {
-            Some(n) => n.edges.iter().map(|(t, l)| (t.clone(), *l)).collect::<Vec<_>>(),
+            Some(n) => n.edges.iter().map(|e| (e.target_id.clone(), e.edge_len)).collect::<Vec<_>>(),
             None => continue,
         };
         if outs.len() < 2 {
@@ -203,25 +232,45 @@ pub fn remove_bubbles(
                     continue;
                 }
 
-                // compute path scores (sum of edge lengths) using the BFS score maps
-                let score_path_a = *score_a.get(meet_node).unwrap_or(&0u64);
-                let score_path_b = *score_b.get(meet_node).unwrap_or(&0u64);
+                // Get metrics for both paths
+                let metrics_a = score_a.get(meet_node).cloned().unwrap_or_default();
+                let metrics_b = score_b.get(meet_node).cloned().unwrap_or_default();
+                let depth_a = *depth_a.get(meet_node).unwrap_or(&usize::MAX);
+                let depth_b = *depth_b.get(meet_node).unwrap_or(&usize::MAX);
 
-                // If both scores are zero (unexpected), skip
-                if score_path_a == 0 && score_path_b == 0 {
+                // Calculate composite scores
+                // Weight factors can be adjusted based on importance
+                const OVERLAP_WEIGHT: f64 = 1.0;
+                const IDENTITY_WEIGHT: f64 = 2.0;
+                const READ_COUNT_WEIGHT: f64 = 1.5;
+
+                let score_a = (metrics_a.total_overlap_len as f64 * OVERLAP_WEIGHT) +
+                            (metrics_a.avg_identity * IDENTITY_WEIGHT * 100.0) +
+                            (metrics_a.read_count as f64 * READ_COUNT_WEIGHT);
+                
+                let score_b = (metrics_b.total_overlap_len as f64 * OVERLAP_WEIGHT) +
+                            (metrics_b.avg_identity * IDENTITY_WEIGHT * 100.0) +
+                            (metrics_b.read_count as f64 * READ_COUNT_WEIGHT);
+
+                // If both paths have no score (unexpected), skip
+                if score_a == 0.0 && score_b == 0.0 {
                     continue;
                 }
 
-                // identify winner and loser
-                let (loser_path, loser_score, winner_score) = if score_path_a < score_path_b {
-                    (path_a.clone(), score_path_a, score_path_b)
+                // Compare paths: higher score wins
+                // If scores equal, shorter path (less depth) wins
+                let (loser_path, winner_score) = if score_a > score_b || (score_a == score_b && depth_a < depth_b) {
+                    (path_b.clone(), score_a)
+                } else if score_b > score_a || (score_a == score_b && depth_b < depth_a) {
+                    (path_a.clone(), score_b)
                 } else {
-                    (path_b.clone(), score_path_b, score_path_a)
+                    // Exactly equal - skip this bubble
+                    continue;
                 };
 
-                // require winner sufficiently stronger than loser
-                if (winner_score as f64) < (min_support_ratio * (loser_score as f64)) {
-                    // not a clear bubble by score
+                // require winner has enough support (based on score difference and min_support_ratio)
+                let loser_score = if score_a > score_b { score_b } else { score_a };
+                if loser_score * min_support_ratio > winner_score {
                     continue;
                 }
 

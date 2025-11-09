@@ -33,8 +33,8 @@ pub fn compress_unitigs(graph: &crate::create_overlap_graph::OverlapGraph,) -> C
         indegree.insert(id.clone(), 0);
     }
     for (source_id, node) in &graph.nodes {
-        for (target_id, _len) in &node.edges {
-            *indegree.entry(target_id.clone()).or_default() += 1;
+        for e in &node.edges {
+            *indegree.entry(e.target_id.clone()).or_default() += 1;
         }
     }
 
@@ -46,8 +46,8 @@ pub fn compress_unitigs(graph: &crate::create_overlap_graph::OverlapGraph,) -> C
     let out_single = |g: &crate::create_overlap_graph::OverlapGraph, cur: &str| -> Option<(String, u32)> {
         g.nodes.get(cur).and_then(|n| {
             if n.edges.len() == 1 {
-                let (t, l) = &n.edges[0];
-                Some((t.clone(), *l))
+                let e = &n.edges[0];
+                Some((e.target_id.clone(), e.edge_len))
             } else {
                 None
             }
@@ -147,12 +147,14 @@ pub fn compress_unitigs(graph: &crate::create_overlap_graph::OverlapGraph,) -> C
         if u.members.is_empty() { continue; }
         let last = u.members.last().unwrap();
         if let Some(last_node) = graph.nodes.get(&last.node_id) {
-            for (tgt_node, overlap) in &last_node.edges {
+            for e in &last_node.edges {
+                let tgt_node = &e.target_id;
+                let overlap = e.edge_len;
                 if let Some(&tgt_uid) = node_to_unitig.get(tgt_node) {
                     if tgt_uid == u.id { continue; } // skip self-loops if you want to ignore them
-                    let triple = (u.id, tgt_uid, *overlap);
+                    let triple = (u.id, tgt_uid, overlap);
                     if !seen_pairs.contains(&triple) {
-                        edges.push(UnitigEdge { from: u.id, to: tgt_uid, overlap: *overlap });
+                        edges.push(UnitigEdge { from: u.id, to: tgt_uid, overlap: overlap });
                         seen_pairs.insert(triple);
                     }
                 }
