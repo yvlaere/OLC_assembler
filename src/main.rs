@@ -5,6 +5,7 @@ mod graph_analysis;
 mod compress_graph;
 mod tip_trimming;
 mod bubble_removal;
+mod utils;
 
 use std::env;
 use std::io;
@@ -98,11 +99,11 @@ fn main() -> io::Result<()>{
         println!("Removed {} oriented nodes from small components (<2)", small_comp_count);
 
         // 4) Tip trimming
-        let tip_lengths = graph_analysis::tip_length_distribution(&graph, 1000);
-        let short_tips = tip_lengths.iter().filter(|&&l| l <= 3).count();
-        println!("Tips before trimming: {}, short tips (<=3): {}", tip_lengths.len(), short_tips);
-        let removed_tips = tip_trimming::cut_tips(&mut graph, max_tip_len);
-        println!("Removed {} tip nodes", removed_tips);
+        let node_count_before_trimming = graph.nodes.len();
+        println!("Tip trimming");
+        tip_trimming::trim_tips(&mut graph, max_tip_len);
+        let node_count_after_trimming = graph.nodes.len();
+        println!("Removed {} nodes by tip trimming", node_count_before_trimming - node_count_after_trimming);
 
         // 5) Iteration stats
         let (_indegree_dist, outdegree_dist) = graph_analysis::analyze_degrees(&graph);
@@ -129,7 +130,53 @@ fn main() -> io::Result<()>{
         println!("\n----------------------------------------");
         println!("\n");
     }
+
+    // weakly connected components after cleanup
+    let final_components = graph_analysis::weakly_connected_components(&graph);
+    println!("Final weakly connected components: {}", final_components.len());
+
+    // graph compression into unitigs
+    println!("Compressing graph into unitigs...");
+    let compressed_graph = compress_graph::compress_unitigs(&graph);
+    println!("Compressed graph has {} unitigs", compressed_graph.unitigs.len());
     
+    // unitig length stats
+    let mut unitig_lengths: Vec<usize> = compressed_graph.unitigs.iter()
+        .map(|u| u.members.len())
+        .collect();
+    unitig_lengths.sort_unstable();
+    let total_unitigs = unitig_lengths.len();
+    let total_length: usize = unitig_lengths.iter().sum();
+    let N50 = {
+        let mut cum_length = 0;
+        let half_length = total_length / 2;
+        let mut n50 = 0;
+        for &len in unitig_lengths.iter().rev() {
+            cum_length += len;
+            if cum_length >= half_length {
+                n50 = len;
+                break;
+            }
+        }
+        n50
+    };
+    println!("Unitig length stats:");
+    println!("Total unitigs: {}", total_unitigs);
+    println!("Total length (in nodes): {}", total_length);
+    println!("N50 unitig length (in nodes): {}", N50);
+
+    // largest unitig members
+    if let Some(largest_unitig) = compressed_graph.unitigs.iter().max_by_key(|u| u.members.len()) {
+        println!("Largest unitig ID: {}, length (in nodes): {}", largest_unitig.id, largest_unitig.members.len());
+    }
+
+    // Final stats
+    println!("\n=== Final Graph Stats ===");
+    let final_node_count = graph.nodes.len();
+    let final_edge_count: usize = graph.nodes.values().map(|n| n.edges.len()).sum();
+    println!("Final graph nodes: {}", final_node_count);
+    println!("Final graph edges: {}", final_edge_count);
+    println!("Final node to edge ratio: {:.4}", final_node_count as f64 / final_edge_count as f64);
 
     Ok(())
 }
