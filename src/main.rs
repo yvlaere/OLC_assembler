@@ -71,8 +71,10 @@ fn main() -> io::Result<()>{
         println!("Transitive reduction removed {} edges", edges_before.saturating_sub(edges_after));
 
         // 2) Bubble popping
-        let removed_bubbles = bubble_removal::remove_bubbles(&mut graph, max_bubble_len, min_support_ratio);
-        println!("Removed {} bubble nodes (including RCs)", removed_bubbles);
+        let node_count_before_bubble_popping = graph.nodes.len();
+        bubble_removal::remove_bubbles(&mut graph, max_bubble_len, min_support_ratio);
+        let node_count_after_bubble_popping = graph.nodes.len();
+        println!("Removed {} bubble nodes (including RCs)", node_count_before_bubble_popping - node_count_after_bubble_popping);
 
         // 3) Remove small components (size < 2)
         let components = graph_analysis::weakly_connected_components(&graph);
@@ -100,7 +102,6 @@ fn main() -> io::Result<()>{
 
         // 4) Tip trimming
         let node_count_before_trimming = graph.nodes.len();
-        println!("Tip trimming");
         tip_trimming::trim_tips(&mut graph, max_tip_len);
         let node_count_after_trimming = graph.nodes.len();
         println!("Removed {} nodes by tip trimming", node_count_before_trimming - node_count_after_trimming);

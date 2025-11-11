@@ -89,31 +89,6 @@ fn extend(graph: &OverlapGraph, start_n: &str, max_ext: usize) -> (NodeType, Vec
     }
 }
 
-/// Delete a set of nodes (both orientations) from the graph and remove associated edges
-fn delete_nodes_and_edges(graph: &mut OverlapGraph, nodes_to_delete: &HashSet<String>) {
-    
-    // Initialize set of nodes to remove
-    let mut oriented_nodes_to_delete: HashSet<String> = HashSet::new();
-
-    for node in nodes_to_delete.iter() {
-        
-        // add to set of nodes to delete
-        oriented_nodes_to_delete.insert(node.clone());
-        // add rc counterpart
-        oriented_nodes_to_delete.insert(utils::rc_node(node));
-    }
-
-    // Delete nodes from graph.nodes
-    for oriented_node in oriented_nodes_to_delete.iter() {
-        graph.nodes.remove(oriented_node);
-    }
-
-    // Remove edges pointing to removed nodes
-    for (_src, node) in graph.nodes.iter_mut() {
-        node.edges.retain(|e| !oriented_nodes_to_delete.contains(&e.target_id));
-    }
-}
-
 /// tip trimming: remove any tip nodes and their reverse-complements from the graph.
 pub fn trim_tips(graph: &mut OverlapGraph, max_ext: usize) {
 
@@ -149,6 +124,6 @@ pub fn trim_tips(graph: &mut OverlapGraph, max_ext: usize) {
     }
 
     if !to_delete.is_empty() {
-        delete_nodes_and_edges(graph, &to_delete);
+        utils::delete_nodes_and_edges(graph, &to_delete);
     }
 }

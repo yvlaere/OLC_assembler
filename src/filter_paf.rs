@@ -1,7 +1,7 @@
-//! A tool to filter PAF files based on overlap statistics.
-//! Uses a two-pass approach:
-//! 1) Collect basic stats per read (number of overlaps, aligned bases)
-//! 2) Filter overlaps based on quality criteria
+/// PAF filtering module
+/// Uses a two-pass approach:
+/// 1) Collect basic stats per read (number of overlaps, aligned bases)
+/// 2) Filter overlaps based on quality criteria
 
 use std::collections::HashMap;
 use std::fs::File;
