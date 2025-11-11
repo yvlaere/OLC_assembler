@@ -1,13 +1,13 @@
-//! A tool to create an overlap graph from PAF overlaps.
+/// Overlap graph creation module
+/// 1. read filtered PAF alignments
+/// 2. classify overlaps into internal matches, containments, proper overlaps
+/// 3. build bigraph with nodes for each read in both orientations and directed edges for proper overlaps
 
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 
-/// A node in the overlap graph. Earch read is represented by two nodes: "<read_name>+" and "<read_name>-". 
-/// One for the origininal orientation and one for the reverse complement.
-/// Each node has directed edges to other nodes with associated edge lengths.
-// Edge info containing all the metrics we track
+/// Edge info containing all the metrics we track
 #[derive(Clone)]
 pub struct EdgeInfo {
     pub target_id: String,
@@ -16,12 +16,17 @@ pub struct EdgeInfo {
     pub identity: f64,
 }
 
+/// A node in the overlap graph. Earch read is represented by two nodes: "<read_name>+" and "<read_name>-"
+/// One for the origininal orientation and one for the reverse complement
+/// Each node has directed edges to other nodes with associated edge lengths
 pub struct Node {
     node_id: String,
     pub edges: Vec<EdgeInfo>,
 }
 
 impl Node {
+
+    /// Create a new node with given id and no edges
     fn new(node_id: String) -> Self {
         Self {
             node_id,
@@ -29,25 +34,20 @@ impl Node {
         }
     }
 
-    /// Add a directed edge to this node. If an edge to the target already exists, we ignore (avoid duplicates).
+    /// Add a directed edge to a node, if an edge to the target already exists, we ignore (avoid duplicates)
     fn add_edge(&mut self, target_node: &str, edge_len: u32, overlap_len: u32, identity: f64) {
         if self.edges.iter().any(|e| e.target_id == target_node) {
             // multiple edges to the same target
             // currently impossible due to the overlap filtering
             // handling might change in the future to handle this case
-            // Silently ignore duplicate edges but log for debugging
+            // silently ignore duplicate edges but log for debugging
             eprintln!("Warning: duplicate edge {} -> {} ignored", self.node_id, target_node);
             return;
         }
-        self.edges.push(EdgeInfo {
-            target_id: target_node.to_owned(),
-            edge_len,
-            overlap_len,
-            identity,
-        });
+        self.edges.push(EdgeInfo {target_id: target_node.to_owned(), edge_len, overlap_len, identity,});
     }
 
-    /// Remove a directed edge to the node with target_node id.
+    /// Remove a directed edge to the node with target_node id
     pub fn remove_edge(&mut self, target_node: &str) {
         if let Some(pos) = self.edges.iter().position(|e| e.target_id == target_node) {
             self.edges.swap_remove(pos);
@@ -60,24 +60,26 @@ impl Node {
     }
 }
 
-/// Overlap graph containing nodes keyed by "<read_name><+/->"
+/// Overlap graph containing nodes keyed by their node id
 pub struct OverlapGraph {
     pub nodes: HashMap<String, Node>,
 }
 
 impl OverlapGraph {
+
+    /// Create a new empty overlap graph
     fn new() -> Self {
         Self {
             nodes: HashMap::new(),
         }
     }
 
-    /// Add a node to the graph if it does not already exist, if it already exists do nothing.
+    /// Add a node to the graph if it does not already exist, if it already exists do nothing
     fn add_node(&mut self, node_id: String) {
         self.nodes.entry(node_id.clone()).or_insert_with(|| Node::new(node_id));
     }
 
-    /// Add a directed edge from from_id to to_id with given edge length and metrics.
+    /// Add a directed edge from from_id to to_id with given edge length and metrics
     fn add_edge(&mut self, from_id: &str, to_id: &str, edge_len: u32, overlap_len: u32, identity: f64) {
         // ensure nodes exist
         if !self.nodes.contains_key(from_id) || !self.nodes.contains_key(to_id) {
@@ -92,18 +94,11 @@ impl OverlapGraph {
     fn remove_node(&mut self, node_id: &str) {
         self.nodes.remove(node_id);
     }
-
-    // Sort edges in all nodes by length.
-    //fn sort_all_edges(&mut self) {
-    //    for node in self.nodes.values_mut() {
-    //        node.sort_edges();
-    //    }
-    //}
 }
 
 /// Counters returned for diagnostics
 #[derive(Default)]
-pub struct GraphStats {
+pub struct OverlapGraphStats {
     pub nr_internal_match: u64,
     pub nr_first_contained: u64,
     pub nr_second_contained: u64,
@@ -112,14 +107,14 @@ pub struct GraphStats {
 
 /// Parse a PAF line
 pub fn parse_paf_line(line: &str) -> Option<(String, u32, i64, i64, char, String, u32, i64, i64, u32, u32, i32)> {
+    
     let fields: Vec<&str> = line.split('\t').collect();
     if fields.len() < 12 {
         return None;
     }
 
     // fields indexing:
-    // 0: query_name, 1: query_length, 2: query_start, 3: query_end, 4: strand
-    // 5: target_name, 6: target_length, 7: target_start, 8: target_end, 9: num_matching, 10: alignment_block_length, 11: mapq
+    // 0: query_name, 1: query_length, 2: query_start, 3: query_end, 4: strand, 5: target_name, 6: target_length, 7: target_start, 8: target_end, 9: num_matching, 10: alignment_block_length, 11: mapq
     let query_name = fields[0].to_string();
     let query_length = fields[1].parse::<u32>().ok()?;
     let query_start = fields[2].parse::<i64>().ok()?;
@@ -136,13 +131,13 @@ pub fn parse_paf_line(line: &str) -> Option<(String, u32, i64, i64, char, String
 }
 
 /// Build overlap graph from overlaps
-pub fn create_overlap_graph(paf_path: &str, max_overhang: u32, overhang_ratio: f64) -> Result<(OverlapGraph, GraphStats), std::io::Error> {
+pub fn create_overlap_graph(paf_path: &str, max_overhang: u32, overhang_ratio: f64) -> Result<(OverlapGraph, OverlapGraphStats), std::io::Error> {
     
     // read PAF file
     let reader = BufReader::new(File::open(paf_path)?);
 
     let mut g = OverlapGraph::new();
-    let mut stats = GraphStats::default();
+    let mut stats = OverlapGraphStats::default();
 
     for (line_nr, line) in reader.lines().enumerate() {
         let line = line?;

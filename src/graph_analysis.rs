@@ -1,7 +1,40 @@
 use std::collections::{HashMap, HashSet};
+use crate::create_overlap_graph::OverlapGraph;
+use crate::utils;
+
+/// Check if the bigraph is synchronized:
+/// 1. Every node has a reverse complement.
+/// 2. Ingoing edges of every node correspond to outgoing edges of its reverse complement.
+pub fn check_synchronization(g: &OverlapGraph) {
+    for n in g.nodes.keys() {
+
+        // compute reverse complement node
+        let n_rc = utils::rc_node(n);
+
+        // check that the reverse complement exists
+        assert!(g.nodes.contains_key(&n_rc), "Reverse complement not found for {}. The bigraph is not synchronized.", n);
+
+        // check that every outgoing edge has a counterpart in the reverse complement node
+        if let Some(node) = g.nodes.get(n) {
+            for e in &node.edges {
+                let t = &e.target_id;
+                let t_rc = utils::rc_node(t);
+
+                // get the reverse complement node for t_rc
+                if let Some(t_rc_node) = g.nodes.get(&t_rc) {
+                    // Check if there's a matching edge from t_rc to n_rc
+                    assert!(t_rc_node.edges.iter().any(|e| e.target_id == n_rc), "Corresponding edge not found for {}. The bigraph is not synchronized.", n);
+                } 
+                else {
+                    panic!("Reverse complement node {} missing for target {}. The bigraph is not synchronized.", t_rc, t);
+                }
+            }
+        }
+    }
+}
 
 /// Find weakly connected components ("clustered reads") of the graph.
-pub fn weakly_connected_components(graph: &crate::create_overlap_graph::OverlapGraph,) -> Vec<Vec<String>> {
+pub fn weakly_connected_components(graph: &OverlapGraph,) -> Vec<Vec<String>> {
     
     // Build an undirected adjacency list
     // Because it is undirected, we can move through both incoming and outgoing edges, meaning we can reach all nodes in a component.
@@ -57,7 +90,7 @@ pub fn weakly_connected_components(graph: &crate::create_overlap_graph::OverlapG
 }
 
 /// Convenience: return component sizes sorted descending
-pub fn component_sizes_sorted(graph: &crate::create_overlap_graph::OverlapGraph) -> Vec<usize> {
+pub fn component_sizes_sorted(graph: &OverlapGraph) -> Vec<usize> {
     let mut sizes: Vec<usize> = weakly_connected_components(graph)
         .into_iter()
         .map(|c| c.len())
@@ -67,7 +100,7 @@ pub fn component_sizes_sorted(graph: &crate::create_overlap_graph::OverlapGraph)
 }
 
 /// Analyze node degrees to understand graph connectivity and compressibility
-pub fn analyze_degrees(graph: &crate::create_overlap_graph::OverlapGraph) -> (HashMap<usize, usize>, HashMap<usize, usize>) {
+pub fn analyze_degrees(graph: &OverlapGraph) -> (HashMap<usize, usize>, HashMap<usize, usize>) {
     let mut indegree_dist: HashMap<usize, usize> = HashMap::new();
     let mut outdegree_dist: HashMap<usize, usize> = HashMap::new();
     
@@ -92,7 +125,7 @@ pub fn analyze_degrees(graph: &crate::create_overlap_graph::OverlapGraph) -> (Ha
 }
 
 /// Fraction of nodes that are compressible (in==1 && out==1) at the oriented-node level.
-pub fn compressible_node_stats(graph: &crate::create_overlap_graph::OverlapGraph) -> (usize, usize, f64) {
+pub fn compressible_node_stats(graph: &OverlapGraph) -> (usize, usize, f64) {
     // compute indegrees
     let mut indegrees: HashMap<String, usize> = HashMap::new();
     for (src, node) in &graph.nodes {
@@ -119,7 +152,7 @@ pub fn compressible_node_stats(graph: &crate::create_overlap_graph::OverlapGraph
 
 /// Find tips and measure tip-lengths (walk forward from nodes with indeg==0)
 /// max_walk limits how far we follow a chain (safety).
-pub fn tip_length_distribution(graph: &crate::create_overlap_graph::OverlapGraph, max_walk: usize) -> Vec<usize> {
+pub fn tip_length_distribution(graph: &OverlapGraph, max_walk: usize) -> Vec<usize> {
     // build indegrees first
     let mut indegrees: HashMap<String, usize> = HashMap::new();
     for (src, node) in &graph.nodes {
@@ -171,7 +204,7 @@ pub fn tip_length_distribution(graph: &crate::create_overlap_graph::OverlapGraph
 }
 
 /// Simple branching summary: return top-k nodes by (in_deg + out_deg)
-pub fn branching_summary(graph: &crate::create_overlap_graph::OverlapGraph, top_k: usize) -> Vec<(String, usize, usize)> {
+pub fn branching_summary(graph: &OverlapGraph, top_k: usize) -> Vec<(String, usize, usize)> {
     // compute indegrees
     let mut indegrees: HashMap<String, usize> = HashMap::new();
     for (src, node) in &graph.nodes {

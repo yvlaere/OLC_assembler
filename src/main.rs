@@ -47,7 +47,7 @@ fn main() -> io::Result<()>{
     println!("Node to edge ratio: {:.4}", node_to_edge_ratio);
 
     // Check that the bigraph is synchronized
-    transitive_edge_reduction::check_synchronization(&graph);
+    graph_analysis::check_synchronization(&graph);
 
     // Iterative graph cleanup until convergence
     println!("\nStarting iterative graph cleanup...");
