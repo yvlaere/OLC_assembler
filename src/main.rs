@@ -1,3 +1,4 @@
+mod alignment_filtering;
 mod filter_paf;
 mod create_overlap_graph;
 mod transitive_edge_reduction;
@@ -22,13 +23,18 @@ fn main() -> io::Result<()>{
     println!("Filtering PAF: {}", &args[1]);
 
     // First filter the PAF file (ignore Result; errors will surface later)
-    //let _ = filter_paf::filter_paf(&args[1], &args[2]);
+    // Configuration
+
+    let min_overlap_length: u32 = 2000;
+    let min_overlap_count: u32 = 3;
+    let min_percent_identity: f32 = 85.0;
+    let max_overhang = args[3].parse::<u32>().expect("parse max_overhang");
+    let overhang_ratio = args[4].parse::<f64>().expect("parse overhang_ratio");
+    let _ = alignment_filtering::filter_paf(&args[1], &args[2], &min_overlap_length, &min_overlap_count, &min_percent_identity, &max_overhang, &overhang_ratio);
 
     println!("Filtered PAF written to {}\n", &args[2]);
 
     let paf = &args[2];
-    let max_overhang = args[3].parse::<u32>().expect("parse max_overhang");
-    let overhang_ratio = args[4].parse::<f64>().expect("parse overhang_ratio");
 
     // Then create the overlap graph
     let (mut graph, stats) = create_overlap_graph::create_overlap_graph(paf, max_overhang, overhang_ratio)?;
@@ -68,7 +74,7 @@ fn main() -> io::Result<()>{
         let edges_before: usize = graph.nodes.values().map(|n| n.edges.len()).sum();
         transitive_edge_reduction::reduce_transitive_edges(&mut graph, fuzz);
         let edges_after: usize = graph.nodes.values().map(|n| n.edges.len()).sum();
-        println!("Transitive reduction removed {} edges", edges_before.saturating_sub(edges_after));
+        println!("Removed {} edges with transitive edge reduction", edges_before.saturating_sub(edges_after));
 
         // 2) Bubble popping
         let node_count_before_bubble_popping = graph.nodes.len();
