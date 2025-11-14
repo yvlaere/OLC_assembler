@@ -30,17 +30,12 @@ fn main() -> io::Result<()>{
     let min_percent_identity: f32 = 85.0;
     let max_overhang = args[3].parse::<u32>().expect("parse max_overhang");
     let overhang_ratio = args[4].parse::<f64>().expect("parse overhang_ratio");
-    let _ = alignment_filtering::filter_paf(&args[1], &args[2], &min_overlap_length, &min_overlap_count, &min_percent_identity, &max_overhang, &overhang_ratio);
+    let overlaps = alignment_filtering::filter_paf(&args[1], &args[2], &min_overlap_length, &min_overlap_count, &min_percent_identity, &max_overhang, &overhang_ratio);
 
     println!("Filtered PAF written to {}\n", &args[2]);
 
-    let paf = &args[2];
-
     // Then create the overlap graph
-    let (mut graph, stats) = create_overlap_graph::create_overlap_graph(paf, max_overhang, overhang_ratio)?;
-
-    println!("Stats: internal={}, first_contained={}, second_contained={}, proper={}",
-        stats.nr_internal_match, stats.nr_first_contained, stats.nr_second_contained, stats.nr_proper_overlaps);
+    let mut graph = create_overlap_graph::create_overlap_graph(overlaps?)?;
 
     //number of edges before reduction
     let edge_count: usize = graph.nodes.values().map(|n| n.edges.len()).sum();

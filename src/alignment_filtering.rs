@@ -1,7 +1,9 @@
 /// alignment filtering module
 /// Uses a two-pass approach:
-/// 1) Collect basic stats per read (number of overlaps, aligned bases)
-/// 2) Filter overlaps based on quality criteria
+/// 1) Read all alignments, store them if they pass basic filters (self-alignment, overlap length, identity), only store the longest alignment per read pair
+/// 2) Calculate coverage statistics per reads
+/// 3) Classify alignments into internal matches, contained reads, proper overlaps
+/// 4) Filter the proper overlaps
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -34,15 +36,15 @@ struct Alignment {
 }
 
 // Struct to hold overlap information
-struct Overlap {
-    query_name: String,
-    rc_query_name: String,
-    target_name: String,
-    rc_target_name: String,
-    edge_len: u32,
-    rc_edge_len: u32,
-    overlap_len: u32,
-    identity: f64,
+pub struct Overlap {
+    pub query_name: String,
+    pub rc_query_name: String,
+    pub target_name: String,
+    pub rc_target_name: String,
+    pub edge_len: u32,
+    pub rc_edge_len: u32,
+    pub overlap_len: u32,
+    pub identity: f64,
 }
 
 /// Enum for alignment classification
@@ -230,7 +232,7 @@ fn classify_alignment(r: &Alignment, query_id: usize, target_id: usize, overlaps
 }
 
 /// Filter PAF file based on overlap quality criteria
-pub fn filter_paf(paf_in: &str, paf_out: &str, min_overlap_length: &u32, min_overlap_count: &u32, min_percent_identity: &f32, max_overhang: &u32, overhang_ratio: &f64) -> io::Result<()> {
+pub fn filter_paf(paf_in: &str, paf_out: &str, min_overlap_length: &u32, min_overlap_count: &u32, min_percent_identity: &f32, max_overhang: &u32, overhang_ratio: &f64) -> Result<HashMap<(usize, usize), Overlap>, io::Error> {
 
     // Setup data structures
     // read name to read id mapping
@@ -246,6 +248,8 @@ pub fn filter_paf(paf_in: &str, paf_out: &str, min_overlap_length: &u32, min_ove
     let mut next_id: usize = 0;
     // keep track of contained reads
     let mut contained_reads: HashSet<usize> = HashSet::new();
+    // initialize overlap storage
+    let mut overlaps: HashMap<(usize, usize), Overlap> = HashMap::new();
 
     let mut self_alignments_skipped: usize = 0;
     let mut alignment_length_skipped: usize = 0;
@@ -309,9 +313,34 @@ pub fn filter_paf(paf_in: &str, paf_out: &str, min_overlap_length: &u32, min_ove
             let (tstart, tend) = (record.target_start as usize, record.target_end as usize);
 
             // store alignment record
-            alignment_ids_per_read[query_id].insert(target_id);
-            alignment_ids_per_read[target_id].insert(query_id);
-            alignments.insert((query_id, target_id), record);
+            // if multiple alignments exist between the same read pair, keep the longest one
+
+            if alignment_ids_per_read[query_id].contains(&target_id) {
+                
+                // an alignment between these reads already exists, it may be stored under
+                // (query_id, target_id) or (target_id, query_id)
+                if let Some(existing) = alignments.get(&(query_id, target_id)) {
+                    if record.alignment_block_length > existing.alignment_block_length {
+                        // replace the existing directed entry
+                        alignments.insert((query_id, target_id), record.clone());
+                    }
+                } 
+                else if let Some(existing) = alignments.get(&(target_id, query_id)) {
+                    if record.alignment_block_length > existing.alignment_block_length {
+                        // remove the old reversed entry and store the new (keeps orientation of current record)
+                        alignments.remove(&(target_id, query_id));
+                        alignments.insert((query_id, target_id), record.clone());
+                    }
+                } else {
+                    println!("Warning: alignment existence inconsistency detected.");
+                }
+            }
+            // we don't have an alignment between these reads yet
+            else {
+                alignment_ids_per_read[query_id].insert(target_id);
+                alignment_ids_per_read[target_id].insert(query_id);
+                alignments.insert((query_id, target_id), record);
+            }
 
             // update read coverage statistics
             reads[query_id].per_base_coverage[qstart as usize .. qend as usize].iter_mut().for_each(|c| *c += 1);
@@ -327,7 +356,6 @@ pub fn filter_paf(paf_in: &str, paf_out: &str, min_overlap_length: &u32, min_ove
     // count amount of alignments
     println!("Total alignments read: {}", alignments.len());
 
-    let mut overlaps: HashMap<(usize, usize), Overlap> = HashMap::new();
     // all alignments have been read, now classify them and update contained reads set
     for ((query_id, target_id), alignment) in &alignments {
         let alignment_type = match classify_alignment(alignment, *query_id, *target_id, &mut overlaps, *max_overhang, *overhang_ratio) {
@@ -364,6 +392,76 @@ pub fn filter_paf(paf_in: &str, paf_out: &str, min_overlap_length: &u32, min_ove
     println!("Total overlaps after removing low coverage reads: {}", overlaps.len());
 
 
+    fn per_read_stats(per_base: &[u32]) -> (f64, f64, f64) {
+        let len = per_base.len() as f64;
+
+        if len == 0.0 {
+            return (0.0, 0.0, 0.0);
+        }
+
+        let total: f64 = per_base.iter().map(|&x| x as f64).sum();
+        let mean = total / len;
+
+        let cov3 = per_base.iter().filter(|&&x| x >= 3).count() as f64;
+        let pct_cov3 = (cov3 / len) * 100.0;
+
+        (mean, pct_cov3, cov3)
+    }
+
+    fn global_coverage_stats(reads: &[Read]) {
+        let mut global_total_cov: f64 = 0.0;
+        let mut global_total_bases: f64 = 0.0;
+        let mut global_cov3_bases: f64 = 0.0;
+
+        let mut per_read_means: Vec<f64> = Vec::new();
+        let mut per_read_pct3: Vec<f64> = Vec::new();
+        let mut per_read_cov3_counts: Vec<f64> = Vec::new();
+
+        let total_nr_reads = reads.len();
+
+        for read in reads {
+            let cov = &read.per_base_coverage;
+            if cov.is_empty() { continue; }
+
+            // per-read stats
+            let (mean, pct3, cov3) = per_read_stats(cov);
+
+            per_read_means.push(mean);
+            per_read_pct3.push(pct3);
+            per_read_cov3_counts.push(cov3);
+
+            // accumulate global totals
+            global_total_bases += cov.len() as f64;
+            global_total_cov += cov.iter().map(|&x| x as f64).sum::<f64>();
+            global_cov3_bases += cov.iter().filter(|&&x| x >= 3).count() as f64;
+        }
+
+        let global_mean = global_total_cov / global_total_bases;
+        let global_pct3 = (global_cov3_bases / global_total_bases) * 100.0;
+        let mean_cov3 = global_cov3_bases / per_read_pct3.len().max(1) as f64;
+
+        let mean_of_means =
+            per_read_means.iter().sum::<f64>() / per_read_means.len().max(1) as f64;
+
+        let mean_of_pct3 =
+            per_read_pct3.iter().sum::<f64>() / per_read_pct3.len().max(1) as f64;
+
+        let pct3_total =
+            per_read_pct3.len().max(1) as f64 / total_nr_reads.max(1) as f64;
+
+        println!("=== GLOBAL COVERAGE STATISTICS ===");
+        println!("Total bases across all reads: {}", global_total_bases as u64);
+        println!("Global mean coverage: {:.3}", global_mean);
+        println!("Global % bases with cov ≥3: {:.3}%", global_pct3);
+        println!("Mean of per-read mean coverages: {:.3}", mean_of_means);
+        println!("Mean of per-read pct ≥3: {:.3}%", mean_of_pct3);
+        println!("Fraction of reads with any bases cov ≥3: {:.3}%", pct3_total * 100.0);
+        println!("Mean # bases with cov ≥3 per read: {:.3}", mean_cov3);
+    }
+
+    global_coverage_stats(&reads);
+
+
     // write filtered overlaps to output PAF file
     let mut writer = io::BufWriter::new(File::create(paf_out)?);
     for ((_q_id, _t_id), ov) in &overlaps {
@@ -384,5 +482,6 @@ pub fn filter_paf(paf_in: &str, paf_out: &str, min_overlap_length: &u32, min_ove
             alignment.alignment_block_length,
             alignment.mapq)?;
     }
-    Ok(())
+
+    return Ok(overlaps);
 }
