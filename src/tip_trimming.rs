@@ -14,7 +14,7 @@ use crate::utils;
 #[derive(PartialEq)]
 enum NodeType {
     Mergeable = 0,   // node can be merged into a linear chain (single incoming and single outgoing edge); indegree = 1 && outdegree = 1
-    Tip = 1,         // no incoming edges (graph tip); indegree = 0
+    Tip = 1,         // no incoming edges (graph tip) and 1 outgoing edge; indegree = 0, outdegree = 1
     Other = 2,       // other node types
 }
 
@@ -37,8 +37,8 @@ fn node_classification(graph: &OverlapGraph, n: &str) -> (NodeType, Option<Strin
     let num_in = incoming.len();
     let outgoing = target_nodes(graph, &n);
     let num_out = outgoing.len();
-    if num_in == 0 {
-        return (NodeType::Tip, None);
+    if num_in == 0 && num_out == 1 {
+        return (NodeType::Tip, Some(outgoing[0].clone()));
     }
     if num_in == 1 && num_out == 1 {
         return (NodeType::Mergeable, Some(outgoing[0].clone()));
@@ -56,15 +56,28 @@ fn extend(graph: &OverlapGraph, start_n: &str, max_ext: usize) -> (NodeType, Vec
     
     // initialize
     let mut chain: Vec<String> = Vec::new();
-    chain.push(start_n.to_string());
     let mut n = start_n.to_string();
     let mut steps_left = max_ext;
+
+    // verify first node is a tip
+    let (node_type, next_opt) = node_classification(graph, &n);
+    if node_type != NodeType::Tip {
+        return (node_type, chain);
+    }
+    chain.push(n);
+    steps_left -= 1;
+
+    // get the next node and start extending
+    let next = match next_opt {
+        Some(s) => s,
+        None => return (NodeType::Mergeable, chain),
+    };
 
     // loop instead of while to guarantee a return value
     loop {
 
         // classify current node
-        let (node_type, next_opt) = node_classification(graph, &n);
+        let (node_type, next_opt) = node_classification(graph, &next);
 
         // non-mergeable -> return
         if node_type != NodeType::Mergeable {
