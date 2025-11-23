@@ -16,6 +16,8 @@ struct Read {
     name: String,
     length: u32,
     per_base_coverage: Vec<u32>,
+    coverage_start: u32,
+    coverage_end: u32,
 }
 
 /// Struct to hold an alignment
@@ -356,7 +358,27 @@ pub fn filter_paf(paf_in: &str, paf_out: &str, min_overlap_length: &u32, min_ove
     // count amount of alignments
     println!("Total alignments read: {}", alignments.len());
 
-    // all alignments have been read, now classify them and update contained reads set
+    // all alignments have been read
+    // store subregions with coverage >= 3 per read
+    for read in &mut reads {
+        for (i, x) in read.per_base_coverage.iter().enumerate() {
+            if x > min_overlap_count {
+                if cur_len == 0 {
+                    cur_start = i;
+                }
+                cur_len += 1;
+                if cur_len > best_len {
+                    best_len = cur_len;
+                    best = Some(cur_start..(i + 1)); // end is exclusive
+                }
+            } else {
+                cur_len = 0;
+            }
+        }
+    }
+    
+
+    // classify alignments and update contained reads set
     for ((query_id, target_id), alignment) in &alignments {
         let alignment_type = match classify_alignment(alignment, *query_id, *target_id, &mut overlaps, *max_overhang, *overhang_ratio) {
             AlignmentType::InternalMatch => {
