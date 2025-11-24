@@ -89,20 +89,35 @@ impl Alignment {
 }
 
 /// Classify alignment and update contained reads set
-fn classify_alignment(r: &Alignment, query_id: usize, target_id: usize, overlaps: &mut HashMap<(usize, usize), Overlap>, max_overhang: u32, overhang_ratio: f64) -> AlignmentType {
+fn classify_alignment(r: &Alignment, query_id: usize, target_id: usize, overlaps: &mut HashMap<(usize, usize), Overlap>, max_overhang: u32, overhang_ratio: f64, reads: &Vec<Read>) -> AlignmentType {
+    
+    // change overlap coordinates based on read coverage
+    let query_start = std::cmp::max(r.query_start, reads[query_id].coverage_start as i64);
+    let query_end = std::cmp::min(r.query_end, reads[query_id].coverage_end as i64);
+    let target_start = std::cmp::max(r.target_start, reads[target_id].coverage_start as i64);
+    let target_end = std::cmp::min(r.target_end, reads[target_id].coverage_end as i64);
+    let query_length = (reads[query_id].coverage_end - reads[query_id].coverage_start) as i64;
+    let target_length = (reads[target_id].coverage_end - reads[target_id].coverage_start) as i64;
+
+    //let query_start = r.query_start;
+    //let query_end = r.query_end;
+    //let target_start = r.target_start;
+    //let target_end = r.target_end;
+    //let query_length = r.query_length as i64;
+    //let target_length = r.target_length as i64;
     
     // use i64 for arithmetic because we may subtract and want to allow signed intermediate
-    let b1 = r.query_start;
-    let e1 = r.query_end;
-    let l1 = r.query_length as i64;
+    let b1 = query_start;
+    let e1 = query_end;
+    let l1 = query_length;
 
     // define overlap beginning and end based on orientation
     // using naming convention corresponding with miniasm paper
     let (b2, e2, l2) = if r.strand == '+' {
-        (r.target_start, r.target_end, r.target_length as i64)
+        (target_start, target_end, target_length as i64)
     } else {
         // reverse complement coordinates on the target
-        (r.target_length as i64 - r.target_end, r.target_length as i64 - r.target_start, r.target_length as i64)
+        (target_length as i64 - target_end, target_length as i64 - target_start, target_length as i64)
     };
 
     // overhang is the part next to the overlap where the reads don't align, but should in case of perfect overlap
@@ -291,8 +306,7 @@ pub fn filter_paf(paf_in: &str, paf_out: &str, min_overlap_length: &u32, min_ove
                     read_name2read_id.insert(record.query_name.clone(), id);
                     alignment_ids_per_read.push(HashSet::new());
                     // create new read object
-                    reads.push(Read {id, name: record.query_name.clone(), length: record.query_length, per_base_coverage: vec![0; record.query_length as usize],
-                    });
+                    reads.push(Read {id, name: record.query_name.clone(), length: record.query_length, per_base_coverage: vec![0; record.query_length as usize], coverage_start: 0, coverage_end: record.query_length,});
                     id
                 }
             };
@@ -305,7 +319,7 @@ pub fn filter_paf(paf_in: &str, paf_out: &str, min_overlap_length: &u32, min_ove
                     read_name2read_id.insert(record.target_name.clone(), id);
                     alignment_ids_per_read.push(HashSet::new());
                     // create new read object
-                    reads.push(Read {id, name: record.target_name.clone(), length: record.target_length, per_base_coverage: vec![0; record.target_length as usize],});
+                    reads.push(Read {id, name: record.target_name.clone(), length: record.target_length, per_base_coverage: vec![0; record.target_length as usize], coverage_start: 0, coverage_end: record.query_length,});
                     id
                 }
             };
@@ -361,6 +375,10 @@ pub fn filter_paf(paf_in: &str, paf_out: &str, min_overlap_length: &u32, min_ove
     // all alignments have been read
     // store subregions with coverage >= 3 per read
     for read in &mut reads {
+        let mut cur_len = 0;
+        let mut cur_start = 0;
+        let mut best_len = 0;
+        let mut best = (0, 0);
         for (i, x) in read.per_base_coverage.iter().enumerate() {
             if x > min_overlap_count {
                 if cur_len == 0 {
@@ -369,18 +387,19 @@ pub fn filter_paf(paf_in: &str, paf_out: &str, min_overlap_length: &u32, min_ove
                 cur_len += 1;
                 if cur_len > best_len {
                     best_len = cur_len;
-                    best = Some(cur_start..(i + 1)); // end is exclusive
+                    best = (cur_start, i + 1); // end is exclusive
                 }
             } else {
                 cur_len = 0;
             }
         }
+        read.coverage_start = best.0 as u32;
+        read.coverage_end = best.1 as u32;
     }
     
-
     // classify alignments and update contained reads set
     for ((query_id, target_id), alignment) in &alignments {
-        let alignment_type = match classify_alignment(alignment, *query_id, *target_id, &mut overlaps, *max_overhang, *overhang_ratio) {
+        let alignment_type = match classify_alignment(alignment, *query_id, *target_id, &mut overlaps, *max_overhang, *overhang_ratio, &reads) {
             AlignmentType::InternalMatch => {
                 continue; // skip internal matches
             }
