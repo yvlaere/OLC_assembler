@@ -51,6 +51,7 @@ pub struct Overlap {
 
 /// Enum for alignment classification
 enum AlignmentType {
+    Filtered,
     InternalMatch,
     FirstContained,
     SecondContained,
@@ -89,7 +90,7 @@ impl Alignment {
 }
 
 /// Classify alignment and update contained reads set
-fn classify_alignment(r: &Alignment, query_id: usize, target_id: usize, overlaps: &mut HashMap<(usize, usize), Overlap>, max_overhang: u32, overhang_ratio: f64, reads: &Vec<Read>) -> AlignmentType {
+fn classify_alignment(r: &Alignment, query_id: usize, target_id: usize, overlaps: &mut HashMap<(usize, usize), Overlap>, max_overhang: u32, overhang_ratio: f64, reads: &Vec<Read>, min_overlap_length: &u32) -> AlignmentType {
     
     // change overlap coordinates based on read coverage
     let query_start = std::cmp::max(r.query_start, reads[query_id].coverage_start as i64);
@@ -130,6 +131,11 @@ fn classify_alignment(r: &Alignment, query_id: usize, target_id: usize, overlaps
     let overlap_length1 = e1.saturating_sub(b1);
     let overlap_length2 = e2.saturating_sub(b2);
     let overlap_length = std::cmp::max(overlap_length1, overlap_length2) as f64;
+
+    // filter out alignments with very small overlaps
+    if overlap_length < *min_overlap_length as f64 {
+        return AlignmentType::Filtered;
+    }
 
     // decide overhang threshold: max_overhang (u32) or maplen * overhang_ratio
     let overhang_threshold = (overlap_length * overhang_ratio).ceil() as i64;
@@ -399,7 +405,10 @@ pub fn filter_paf(paf_in: &str, paf_out: &str, min_overlap_length: &u32, min_ove
     
     // classify alignments and update contained reads set
     for ((query_id, target_id), alignment) in &alignments {
-        let alignment_type = match classify_alignment(alignment, *query_id, *target_id, &mut overlaps, *max_overhang, *overhang_ratio, &reads) {
+        let alignment_type = match classify_alignment(alignment, *query_id, *target_id, &mut overlaps, *max_overhang, *overhang_ratio, &reads, min_overlap_length) {
+            AlignmentType::Filtered => {
+                continue; // skip filtered alignments
+            }
             AlignmentType::InternalMatch => {
                 continue; // skip internal matches
             }
