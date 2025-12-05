@@ -125,17 +125,18 @@ fn classify_alignment(r: &Alignment, query_id: usize, target_id: usize, overlaps
     // overhang: min(b1,b2) + min(l1 - e1, l2 - e2)
     let overhang_left = std::cmp::min(b1, b2);
     let overhang_right = std::cmp::min(l1 - e1, l2 - e2);
+
+    // new
+    if overhang_left > max_overhang as i64 || overhang_right > max_overhang as i64 {
+        return AlignmentType::InternalMatch;
+    }
+
     let overhang = overhang_left + overhang_right;
 
     // longest overlap length (max aligned spans on either read)
-    let overlap_length1 = e1.saturating_sub(b1);
-    let overlap_length2 = e2.saturating_sub(b2);
+    let overlap_length1 = e1 - b1;
+    let overlap_length2 = e2 - b2;
     let overlap_length = std::cmp::max(overlap_length1, overlap_length2) as f64;
-
-    // filter out alignments with very small overlaps
-    if overlap_length < *min_overlap_length as f64 {
-        return AlignmentType::Filtered;
-    }
 
     // decide overhang threshold: max_overhang (u32) or maplen * overhang_ratio
     let overhang_threshold = (overlap_length * overhang_ratio).ceil() as i64;
@@ -147,6 +148,13 @@ fn classify_alignment(r: &Alignment, query_id: usize, target_id: usize, overlaps
     if overhang > allowed_overhang {
         // internal match
         return AlignmentType::InternalMatch;
+    }
+
+    
+
+    // filter out alignments with very small overlaps
+    if overlap_length < *min_overlap_length as f64 {
+        return AlignmentType::Filtered;
     }
 
     // conditions for containment:
