@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
-use crate::alignment_filtering_mod::Overlap;
+use crate::alignment_filtering::Overlap;
 use std::io;
 
 /// Edge info containing all the metrics we track

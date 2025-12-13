@@ -150,16 +150,8 @@ fn classify_alignment(r: &Alignment, query_id: usize, target_id: usize, overlaps
         return AlignmentType::InternalMatch;
     }
 
-    
-
-    // filter out alignments with very small overlaps
-    if overlap_length < *min_overlap_length as f64 {
-        return AlignmentType::Filtered;
-    }
-
     // conditions for containment:
     // first contained in second:
-    // (b1 <= b2) and ((l1 - e1) <= (l2 - e2))
     let first_contained = (b1 <= b2) && ((l1 - e1) <= (l2 - e2));
     // second contained in first:
     let second_contained = (b1 >= b2) && ((l1 - e1) >= (l2 - e2));
@@ -168,6 +160,11 @@ fn classify_alignment(r: &Alignment, query_id: usize, target_id: usize, overlaps
         return AlignmentType::FirstContained;
     } else if second_contained {
         return AlignmentType::SecondContained;
+    }
+
+    // filter out alignments with very small overlaps
+    if overlap_length1 + overhang_left + overhang_right < *min_overlap_length as i64  || overlap_length2 + overhang_left + overhang_right < *min_overlap_length as i64 {
+        return AlignmentType::Filtered;
     }
 
     // at this point it's a proper overlap between reads

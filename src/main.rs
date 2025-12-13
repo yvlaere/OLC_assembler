@@ -1,4 +1,4 @@
-mod alignment_filtering_mod;
+mod alignment_filtering;
 mod filter_paf;
 mod create_overlap_graph;
 mod transitive_edge_reduction;
@@ -30,7 +30,7 @@ fn main() -> io::Result<()>{
     let min_percent_identity: f32 = 5.0; // 100/2000 = 5%
     let max_overhang = args[3].parse::<u32>().expect("parse max_overhang");
     let overhang_ratio = args[4].parse::<f64>().expect("parse overhang_ratio");
-    let overlaps = alignment_filtering_mod::filter_paf(&args[1], &args[2], &min_overlap_length, &min_overlap_count, &min_percent_identity, &max_overhang, &overhang_ratio);
+    let overlaps = alignment_filtering::filter_paf(&args[1], &args[2], &min_overlap_length, &min_overlap_count, &min_percent_identity, &max_overhang, &overhang_ratio);
 
     println!("Filtered PAF written to {}\n", &args[2]);
 
