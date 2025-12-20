@@ -60,7 +60,7 @@ fn main() -> io::Result<()>{
     let mut iteration = 1;
     let mut prev_node_count = graph.nodes.len() + 1;  // Ensure first iteration runs
 
-    for i in 0..10 {
+    for i in 0..1 {
     //while graph.nodes.len() < prev_node_count {
         prev_node_count = graph.nodes.len();
         println!("\n=== Cleanup Iteration {} ===", iteration);

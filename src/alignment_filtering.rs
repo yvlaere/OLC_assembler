@@ -295,8 +295,11 @@ pub fn filter_paf(paf_in: &str, paf_out: &str, min_overlap_length: &u32, min_ove
             // skip if it's a self-alignment, short alignment, or low identity
             //if record.is_self_alignment() || record.alignment_block_length < *min_overlap_length || record.percent_identity() < *min_percent_identity { continue; }
             if record.is_self_alignment() { self_alignments_skipped +=1; continue; }
+
+            let query_overlap_length = record.query_end - record.query_start;
+            let target_overlap_length = record.target_end - record.target_start;
             
-            if record.alignment_block_length < *min_overlap_length {
+            if query_overlap_length < (*min_overlap_length).into() || target_overlap_length < (*min_overlap_length).into() {
                 alignment_length_skipped += 1;
                 continue;
             }
@@ -410,7 +413,8 @@ pub fn filter_paf(paf_in: &str, paf_out: &str, min_overlap_length: &u32, min_ove
     
     // classify alignments and update contained reads set
     for ((query_id, target_id), alignment) in &alignments {
-        let alignment_type = match classify_alignment(alignment, *query_id, *target_id, &mut overlaps, *max_overhang, *overhang_ratio, &reads, min_overlap_length) {
+        //let alignment_type = match classify_alignment(alignment, *query_id, *target_id, &mut overlaps, *max_overhang, *overhang_ratio, &reads, min_overlap_length) {
+        let alignment_type = match classify_alignment(alignment, *query_id, *target_id, &mut overlaps, 4000000000, *overhang_ratio, &reads, min_overlap_length) {
             AlignmentType::Filtered => {
                 continue; // skip filtered alignments
             }
