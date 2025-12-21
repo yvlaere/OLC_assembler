@@ -99,6 +99,7 @@ impl OverlapGraph {
 /// Build overlap graph from overlaps
 pub fn create_overlap_graph(overlaps: HashMap<(usize, usize), Overlap>) -> Result<OverlapGraph, io::Error> {
 
+    println!("=== OVERLAP GRAPH CREATION ===");
     let mut g = OverlapGraph::new();
 
     for ((_query_id, _target_id), o) in overlaps.iter() {
@@ -114,5 +115,14 @@ pub fn create_overlap_graph(overlaps: HashMap<(usize, usize), Overlap>) -> Resul
         g.add_node(o.rc_target_name.clone());
         g.add_edge(&o.rc_target_name, &o.rc_query_name, o.rc_edge_len, o.overlap_len, o.identity);
     }
+
+    // graph stats
+    let edge_count: usize = g.nodes.values().map(|n| n.edges.len()).sum();
+    let node_count = g.nodes.len();
+    let node_to_edge_ratio = node_count as f64 / edge_count as f64;
+    println!("Graph nodes: {}", node_count);
+    println!("Graph edges: {}", edge_count);
+    println!("Node to edge ratio: {:.4}", node_to_edge_ratio);
+    println!("=== OVERLAP GRAPH CREATION FINISHED ===");
     return Ok(g);
 }

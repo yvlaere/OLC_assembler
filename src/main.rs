@@ -15,21 +15,21 @@ use std::collections::HashSet;
 fn main() -> io::Result<()>{
 
     let args: Vec<String> = env::args().collect();
-    if args.len() != 5 {
-        eprintln!("Usage: {} <input.paf> <intermediary.paf> <max_overhang> <overhang_ratio>", args[0]);
+    if args.len() != 3 {
+        eprintln!("Usage: {} <input.paf> <intermediary.paf>", args[0]);
         std::process::exit(1);
     }
 
     println!("Filtering PAF: {}", &args[1]);
 
-    // First filter the PAF file (ignore Result; errors will surface later)
-    // Configuration
+    // First filter the PAF file
 
+    // Configuration
     let min_overlap_length: u32 = 2000;
     let min_overlap_count: u32 = 3;
     let min_percent_identity: f32 = 5.0; // 100/2000 = 5%
-    let max_overhang = args[3].parse::<u32>().expect("parse max_overhang");
-    let overhang_ratio = args[4].parse::<f64>().expect("parse overhang_ratio");
+    let max_overhang = 0;
+    let overhang_ratio = 0.8;
     let overlaps = alignment_filtering::filter_paf(&args[1], &args[2], &min_overlap_length, &min_overlap_count, &min_percent_identity, &max_overhang, &overhang_ratio);
 
     println!("Filtered PAF written to {}\n", &args[2]);
@@ -37,21 +37,11 @@ fn main() -> io::Result<()>{
     // Then create the overlap graph
     let mut graph = create_overlap_graph::create_overlap_graph(overlaps?)?;
 
-    //number of edges before reduction
-    let edge_count: usize = graph.nodes.values().map(|n| n.edges.len()).sum();
-
-    // node to edge ratio
-    let node_count = graph.nodes.len();
-    let node_to_edge_ratio = node_count as f64 / edge_count as f64;
-    println!("Graph nodes: {}", node_count);
-    println!("Graph edges: {}", edge_count);
-    println!("Node to edge ratio: {:.4}", node_to_edge_ratio);
-
     // Check that the bigraph is synchronized
     graph_analysis::check_synchronization(&graph);
 
     // Iterative graph cleanup until convergence
-    println!("\nStarting iterative graph cleanup...");
+    println!("=== STARTING GRAPH CLEANUP ===");
     let max_bubble_len = 8;  // Max edges per bubble path
     let min_support_ratio = 1.1;  // Require 10% stronger path for removal
     let max_tip_len = 4;  // Maximum tip length to remove
@@ -60,8 +50,7 @@ fn main() -> io::Result<()>{
     let mut iteration = 1;
     let mut prev_node_count = graph.nodes.len() + 1;  // Ensure first iteration runs
 
-    for i in 0..1 {
-    //while graph.nodes.len() < prev_node_count {
+    for i in 0..10 {
         prev_node_count = graph.nodes.len();
         println!("\n=== Cleanup Iteration {} ===", iteration);
 
@@ -109,14 +98,8 @@ fn main() -> io::Result<()>{
 
         // 5) Iteration stats
         let (_indegree_dist, outdegree_dist) = graph_analysis::analyze_degrees(&graph);
-        let high_branch = outdegree_dist.iter()
-            .filter(|(deg, _)| **deg > 1)
-            .map(|(_, count)| *count)
-            .sum::<usize>();
-        let very_high = outdegree_dist.iter()
-            .filter(|(deg, _)| **deg >= 3)
-            .map(|(_, count)| *count)
-            .sum::<usize>();
+        let high_branch = outdegree_dist.iter().filter(|(deg, _)| **deg > 1).map(|(_, count)| *count).sum::<usize>();
+        let very_high = outdegree_dist.iter().filter(|(deg, _)| **deg >= 3).map(|(_, count)| *count).sum::<usize>();
 
         println!("\nIteration {} stats:", iteration);
         println!("Current nodes: {}", graph.nodes.len());
