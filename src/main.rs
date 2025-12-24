@@ -120,15 +120,16 @@ fn main() -> io::Result<()>{
     let final_components = graph_analysis::weakly_connected_components(&graph);
     println!("Final weakly connected components: {}", final_components.len());
 
+    // count nodes with outdegree > 1
+    
+
     // graph compression into unitigs
     println!("Compressing graph into unitigs...");
     let compressed_graph = compress_graph::compress_unitigs(&graph);
     println!("Compressed graph has {} unitigs", compressed_graph.unitigs.len());
     
     // unitig length stats
-    let mut unitig_lengths: Vec<usize> = compressed_graph.unitigs.iter()
-        .map(|u| u.members.len())
-        .collect();
+    let mut unitig_lengths: Vec<usize> = compressed_graph.unitigs.iter().map(|u| u.members.len()).collect();
     unitig_lengths.sort_unstable();
     let total_unitigs = unitig_lengths.len();
     let total_length: usize = unitig_lengths.iter().sum();
@@ -159,8 +160,10 @@ fn main() -> io::Result<()>{
     println!("\n=== Final Graph Stats ===");
     let final_node_count = graph.nodes.len();
     let final_edge_count: usize = graph.nodes.values().map(|n| n.edges.len()).sum();
+    let big_outdegree_count = graph.nodes.values().filter(|n| n.edges.len() > 1).count();
     println!("Final graph nodes: {}", final_node_count);
     println!("Final graph edges: {}", final_edge_count);
+    println!("Nodes with out-degree > 1: {}", big_outdegree_count);
     println!("Final node to edge ratio: {:.4}", final_node_count as f64 / final_edge_count as f64);
 
     Ok(())

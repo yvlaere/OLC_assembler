@@ -91,6 +91,7 @@ impl OverlapGraph {
     }
 
     /// Remove a node and all its edges from the graph.
+    // it doesn't remove edges, but its not used anywhere, so its fine for now
     fn remove_node(&mut self, node_id: &str) {
         self.nodes.remove(node_id);
     }
