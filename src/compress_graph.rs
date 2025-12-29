@@ -63,7 +63,10 @@ pub fn compress_unitigs(graph: &crate::create_overlap_graph::OverlapGraph,) -> C
         let outdeg_i = node.edges.len();
 
         if indegree_i != 1 || outdeg_i != 1 {
+
+            // skip if already visited
             if visited.contains(id) { continue; }
+
             // start a new unitig from id
             println!("starting unitig at node {}", id);
             let mut members: Vec<UnitigMember> = Vec::new();
@@ -76,7 +79,7 @@ pub fn compress_unitigs(graph: &crate::create_overlap_graph::OverlapGraph,) -> C
                 println!("extending unitig");
                 let next_indegree = *indegree.get(&next).unwrap_or(&0);
                 if next_indegree != 1 {
-                    // still add the next as the last node? no — stop here.
+                    // still add the next as the last node? no, stop here.
                     break;
                 }
                 if visited.contains(&next) { break; }
@@ -94,20 +97,25 @@ pub fn compress_unitigs(graph: &crate::create_overlap_graph::OverlapGraph,) -> C
         }
     }
 
-    // 3) Handle remaining nodes that are still unvisited (they belong to cycles where indegree==1 and outdeg==1)
+    println!("\n");
+
+    // 3) Handle remaining nodes that are still unvisited (they belong to circular components where indegree==1 and outdeg==1)
     for id in graph.nodes.keys() {
         if visited.contains(id) { continue; }
-        // start a cycle unitig
+        println!("starting circular unitig at node {}", id);
+        // start a circular unitig
         let mut cur = id.clone();
         let mut members: Vec<UnitigMember> = Vec::new();
 
         loop {
             visited.insert(cur.clone());
             // to follow, get the unique outgoing edge
+            println!("extending circular unitig");
             let next_edge = out_single(graph, &cur);
             if next_edge.is_none() {
                 // shouldn't happen in pure cycle, break defensively
                 members.push(UnitigMember { node_id: cur.clone(), overlap_from_prev: 0 });
+                println!("warning: broken cycle detected during unitig compression");
                 break;
             }
             let (next, overlap) = next_edge.unwrap();
@@ -116,12 +124,12 @@ pub fn compress_unitigs(graph: &crate::create_overlap_graph::OverlapGraph,) -> C
             if members.is_empty() {
                 members.push(UnitigMember { node_id: cur.clone(), overlap_from_prev: 0 });
             } else {
-                // calculate overlap_from_prev for cur: we need the overlap from previous->cur
-                // but in the cycle walk we added that when we pushed the node previously
+                members.push(UnitigMember { node_id: cur.clone(), overlap_from_prev: overlap });
             }
 
             // move to next; stop when next is already in members (closed the cycle)
             if visited.contains(&next) {
+                println!("closing circular unitig");
                 // we've reached a previously visited node — close cycle
                 // push next only if not included
                 if !members.iter().any(|m| m.node_id == next) {
@@ -132,7 +140,7 @@ pub fn compress_unitigs(graph: &crate::create_overlap_graph::OverlapGraph,) -> C
             }
 
             // push next with overlap_from_prev = overlap (cur->next)
-            members.push(UnitigMember { node_id: next.clone(), overlap_from_prev: overlap });
+            //members.push(UnitigMember { node_id: next.clone(), overlap_from_prev: overlap });
             cur = next;
         }
 

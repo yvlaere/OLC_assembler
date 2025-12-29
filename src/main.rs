@@ -21,8 +21,8 @@ use std::collections::HashMap;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let args: Vec<String> = env::args().collect();
-    if args.len() != 3 {
-        eprintln!("Usage: {} <input.paf> <intermediary.paf>", args[0]);
+    if args.len() != 2 {
+        eprintln!("Usage: {} <input.paf>", args[0]);
         std::process::exit(1);
     }
 
@@ -37,8 +37,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let max_overhang = 0;
     let overhang_ratio = 0.8;
     //let overlaps = alignment_filtering::filter_paf(&args[1], &args[2], &min_overlap_length, &min_overlap_count, &min_percent_identity, &max_overhang, &overhang_ratio);
-
-    println!("Filtered PAF written to {}\n", &args[2]);
 
     // deserialize overlaps, debugging
     fn load_overlaps(path: &str) -> Result<HashMap<(usize, usize), Overlap>, Box<dyn std::error::Error>> {

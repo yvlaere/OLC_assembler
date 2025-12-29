@@ -465,27 +465,6 @@ pub fn filter_paf(paf_in: &str, paf_out: &str, min_overlap_length: &u32, min_ove
     println!("=== PHASE 3 FINISHED ===");
     println!("=== ALIGNMENT FILTERING FINISHED ===");
 
-    // write filtered overlaps to output PAF file
-    let mut writer = io::BufWriter::new(File::create(paf_out)?);
-    for ((_q_id, _t_id), ov) in &overlaps {
-        // write the corresponding Alignment record to a new paf file
-        // start by getting the corresponding Alignment object
-        let alignment = alignments.get(&(*_q_id, *_t_id)).unwrap();
-        writeln!(writer, "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
-            alignment.query_name,
-            alignment.query_length,
-            alignment.query_start,
-            alignment.query_end,
-            alignment.strand,
-            alignment.target_name,
-            alignment.target_length,
-            alignment.target_start,
-            alignment.target_end,
-            alignment.num_matching,
-            alignment.alignment_block_length,
-            alignment.mapq)?;
-    }
-
     // serialize the overlaps
     fn save_overlaps(path: &str, overlaps: &HashMap<(usize, usize), Overlap>,) -> Result<(), Box<dyn std::error::Error>> {
         let file = File::create(path)?;
