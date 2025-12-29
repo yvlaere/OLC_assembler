@@ -12,7 +12,13 @@ use std::env;
 use std::io;
 use std::collections::HashSet;
 
-fn main() -> io::Result<()>{
+// used for deserializing overlaps, debugging
+use std::io::BufReader;
+use std::fs::File;
+use crate::alignment_filtering::Overlap;
+use std::collections::HashMap;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let args: Vec<String> = env::args().collect();
     if args.len() != 3 {
@@ -30,12 +36,21 @@ fn main() -> io::Result<()>{
     let min_percent_identity: f32 = 5.0; // 100/2000 = 5%
     let max_overhang = 0;
     let overhang_ratio = 0.8;
-    let overlaps = alignment_filtering::filter_paf(&args[1], &args[2], &min_overlap_length, &min_overlap_count, &min_percent_identity, &max_overhang, &overhang_ratio);
+    //let overlaps = alignment_filtering::filter_paf(&args[1], &args[2], &min_overlap_length, &min_overlap_count, &min_percent_identity, &max_overhang, &overhang_ratio);
 
     println!("Filtered PAF written to {}\n", &args[2]);
 
+    // deserialize overlaps, debugging
+    fn load_overlaps(path: &str) -> Result<HashMap<(usize, usize), Overlap>, Box<dyn std::error::Error>> {
+        let file = File::open(path)?;
+        let reader = BufReader::new(file);
+        let overlaps = bincode::deserialize_from(reader);
+        Ok(overlaps?)
+    }
+    let overlaps = load_overlaps("overlaps.bin")?;
+
     // Then create the overlap graph
-    let mut graph = create_overlap_graph::create_overlap_graph(overlaps?)?;
+    let mut graph = create_overlap_graph::create_overlap_graph(overlaps)?;
 
     // Check that the bigraph is synchronized
     graph_analysis::check_synchronization(&graph);

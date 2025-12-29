@@ -9,6 +9,10 @@ use std::collections::HashSet;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
 
+// enable serialization for debugging purposes
+use serde::{Serialize, Deserialize};
+use std::io::BufWriter;
+
 /// Struct to hold a read
 struct Read {
     id: usize,
@@ -37,6 +41,7 @@ struct Alignment {
 }
 
 // Struct to hold overlap information
+#[derive(Serialize, Deserialize)]
 pub struct Overlap {
     pub query_name: String,
     pub rc_query_name: String,
@@ -480,6 +485,15 @@ pub fn filter_paf(paf_in: &str, paf_out: &str, min_overlap_length: &u32, min_ove
             alignment.alignment_block_length,
             alignment.mapq)?;
     }
+
+    // serialize the overlaps
+    fn save_overlaps(path: &str, overlaps: &HashMap<(usize, usize), Overlap>,) -> Result<(), Box<dyn std::error::Error>> {
+        let file = File::create(path)?;
+        let writer = BufWriter::new(file);
+        bincode::serialize_into(writer, overlaps)?;
+        Ok(())
+    }
+    save_overlaps("overlaps.bin", &overlaps).expect("Failed to save overlaps.");
 
     return Ok(overlaps);
 }

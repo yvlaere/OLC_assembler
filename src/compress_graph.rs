@@ -1,3 +1,6 @@
+/// graph compression module
+/// creates a compressed graph of unitigs from an overlap graph
+
 use std::collections::{HashMap, HashSet};
 
 pub struct UnitigMember {
@@ -27,7 +30,7 @@ pub struct CompressedGraph {
 /// Preserves member lists and the overlap lengths between them.
 pub fn compress_unitigs(graph: &crate::create_overlap_graph::OverlapGraph,) -> CompressedGraph {
     
-    // 1) indegree map
+    // 1) create a map of indegrees
     let mut indegree: HashMap<String, usize> = HashMap::new();
     for id in graph.nodes.keys() {
         indegree.insert(id.clone(), 0);
@@ -62,6 +65,7 @@ pub fn compress_unitigs(graph: &crate::create_overlap_graph::OverlapGraph,) -> C
         if indegree_i != 1 || outdeg_i != 1 {
             if visited.contains(id) { continue; }
             // start a new unitig from id
+            println!("starting unitig at node {}", id);
             let mut members: Vec<UnitigMember> = Vec::new();
             let mut cur = id.clone();
             members.push(UnitigMember { node_id: cur.clone(), overlap_from_prev: 0 });
@@ -69,6 +73,7 @@ pub fn compress_unitigs(graph: &crate::create_overlap_graph::OverlapGraph,) -> C
 
             // walk forward while next node has indegree == 1 && outdeg == 1
             while let Some((next, overlap)) = out_single(graph, &cur) {
+                println!("extending unitig");
                 let next_indegree = *indegree.get(&next).unwrap_or(&0);
                 if next_indegree != 1 {
                     // still add the next as the last node? no — stop here.
