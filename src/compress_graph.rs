@@ -8,7 +8,8 @@ use std::collections::{HashMap, HashSet};
 
 pub struct UnitigMember {
     pub node_id: String,
-    pub overlap_from_prev: u32,
+    // node id and overlap length to the next node in the unitig
+    pub edge: (String, u32),
 }
 
 pub struct Unitig {
@@ -72,13 +73,13 @@ pub fn compress_unitigs(graph: &crate::create_overlap_graph::OverlapGraph,) -> C
 
             // create a unitig for each outgoing edge
             // if outdeg == 0, there will be no unitig
-            for out_edge_i in 0..=outdeg_i {
+            for out_edge_i in 0..outdeg_i {
 
                 // start a new unitig from id
                 println!("starting unitig at node {}", id);
                 let mut members: Vec<UnitigMember> = Vec::new();
                 let mut cur = id.clone();
-                members.push(UnitigMember { node_id: cur.clone(), overlap_from_prev: 0 });
+                //members.push(UnitigMember { node_id: cur.clone(), overlap_from_prev: 0 });
                 visited.insert(cur.clone());
 
                 // check the next outgoing edge
@@ -89,11 +90,11 @@ pub fn compress_unitigs(graph: &crate::create_overlap_graph::OverlapGraph,) -> C
                 println!("extending unitig");
                 let second_indegree = *indegree.get(&second).unwrap_or(&0);
                 // don't add the node that breaks the chain
-                if second_indegree != 1 { break; }
+                if second_indegree != 1 { continue; }
                 // stop if second is already visited
-                if visited.contains(&second) { break; }
-                // push second with overlap_from_prev = overlap (cur -> next)
-                members.push(UnitigMember { node_id: second.clone(), overlap_from_prev: overlap });
+                if visited.contains(&second) { continue; }
+                // push the first node into the unitig members
+                members.push(UnitigMember { node_id: cur.clone(), edge: (second.clone(), overlap) });
                 visited.insert(second.clone());
                 cur = second.clone();
                 
