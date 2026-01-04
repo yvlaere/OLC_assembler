@@ -21,10 +21,13 @@ use std::collections::HashMap;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let args: Vec<String> = env::args().collect();
-    if args.len() != 2 {
-        eprintln!("Usage: {} <input.paf>", args[0]);
+    if args.len() != 4 {
+        eprintln!("Usage: {} <input.paf> <reads.fq> <out.fna>", args[0]);
         std::process::exit(1);
     }
+
+    let reads_fq = &args[2];
+    let out_fasta = &args[3];
 
     println!("Filtering PAF: {}", &args[1]);
 
@@ -36,7 +39,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let min_percent_identity: f32 = 5.0; // 100/2000 = 5%
     let max_overhang = 0;
     let overhang_ratio = 0.8;
-    //let overlaps = alignment_filtering::filter_paf(&args[1], &args[2], &min_overlap_length, &min_overlap_count, &min_percent_identity, &max_overhang, &overhang_ratio);
+    //let overlaps = alignment_filtering::filter_paf(&args[1], &min_overlap_length, &min_overlap_count, &min_percent_identity, &max_overhang, &overhang_ratio);
 
     // deserialize overlaps, debugging
     fn load_overlaps(path: &str) -> Result<HashMap<(usize, usize), Overlap>, Box<dyn std::error::Error>> {
@@ -134,11 +137,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Final weakly connected components: {}", final_components.len());
 
     // count nodes with outdegree > 1
-    
 
     // graph compression into unitigs
     println!("Compressing graph into unitigs...");
-    let compressed_graph = compress_graph::compress_unitigs(&graph);
+    let compressed_graph = compress_graph::compress_unitigs(&graph, reads_fq, out_fasta);
     println!("Compressed graph has {} unitigs", compressed_graph.unitigs.len());
     
     // unitig length stats

@@ -261,7 +261,7 @@ fn classify_alignment(r: &Alignment, query_id: usize, target_id: usize, overlaps
 }
 
 /// Filter PAF file based on overlap quality criteria
-pub fn filter_paf(paf_in: &str, paf_out: &str, min_overlap_length: &u32, min_overlap_count: &u32, min_percent_identity: &f32, max_overhang: &u32, overhang_ratio: &f64) -> Result<HashMap<(usize, usize), Overlap>, io::Error> {
+pub fn filter_paf(paf_in: &str, min_overlap_length: &u32, min_overlap_count: &u32, min_percent_identity: &f32, max_overhang: &u32, overhang_ratio: &f64) -> Result<HashMap<(usize, usize), Overlap>, io::Error> {
 
     // Setup data structures
     // read name to read id mapping

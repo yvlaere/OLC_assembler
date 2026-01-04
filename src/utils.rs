@@ -41,3 +41,15 @@ pub fn delete_nodes_and_edges(graph: &mut OverlapGraph, nodes_to_delete: &HashSe
         node.edges.retain(|e| !oriented_nodes_to_delete.contains(&e.target_id));
     }
 }
+
+pub fn rev_comp(seq: &str) -> String {
+    seq.chars().rev()
+        .map(|c| match c {
+            'A' | 'a' => 'T',
+            'T' | 't' => 'A',
+            'C' | 'c' => 'G',
+            'G' | 'g' => 'C',
+            'N' | 'n' => 'N',
+            _ => c,
+        }).collect()
+}
