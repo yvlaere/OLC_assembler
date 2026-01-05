@@ -20,11 +20,11 @@ pub struct Unitig {
     pub fasta_seq: Option<String>,
 }
 
-pub struct UnitigEdge {
-    pub from: usize,
-    pub to: usize,
-    pub overlap: u32,
-}
+//pub struct UnitigEdge {
+//    pub from: usize,
+//    pub to: usize,
+//    pub overlap: u32, // should this be edge length or overlap length?
+//}
 
 pub struct CompressedGraph {
     pub unitigs: Vec<Unitig>,

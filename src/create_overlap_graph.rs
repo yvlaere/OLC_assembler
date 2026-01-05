@@ -101,14 +101,14 @@ pub fn create_overlap_graph(overlaps: HashMap<(usize, usize), Overlap>) -> Resul
         // add overlap to the graph
 
         // original orientation
-        g.add_node(o.query_name.clone());
-        g.add_node(o.target_name.clone());
-        g.add_edge(&o.query_name, &o.target_name, o.edge_len, o.overlap_len, o.identity);
+        g.add_node(o.source_name.clone());
+        g.add_node(o.sink_name.clone());
+        g.add_edge(&o.source_name, &o.sink_name, o.edge_len_orig, o.overlap_len, o.identity);
 
         // reverse complement counterpart:
-        g.add_node(o.rc_query_name.clone());
-        g.add_node(o.rc_target_name.clone());
-        g.add_edge(&o.rc_target_name, &o.rc_query_name, o.rc_edge_len, o.overlap_len, o.identity);
+        g.add_node(o.rc_source_name.clone());
+        g.add_node(o.rc_sink_name.clone());
+        g.add_edge(&o.rc_source_name, &o.rc_sink_name, o.rc_edge_len_orig, o.overlap_len, o.identity);
     }
 
     // graph stats

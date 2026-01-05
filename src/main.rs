@@ -48,7 +48,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let overlaps = bincode::deserialize_from(reader);
         Ok(overlaps?)
     }
+    println!("Loading overlaps from binary file...");
     let overlaps = load_overlaps("overlaps.bin")?;
+    println!("Loaded {} overlaps", overlaps.len());
 
     // Then create the overlap graph
     let mut graph = create_overlap_graph::create_overlap_graph(overlaps)?;
