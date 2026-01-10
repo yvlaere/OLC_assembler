@@ -191,9 +191,6 @@ fn classify_alignment(r: &Alignment, query_id: usize, target_id: usize, overlaps
 
         // edge length = b1 - b2 (non-overlapping prefix length)
         let edge1_len_i64 = b1 - b2;
-        if edge1_len_i64 < 0 {
-            println!("Warning: negative edge length encountered in overlap classification.");
-        }
         let edge1_len = edge1_len_i64 as u32;
 
         // reverse complement counterpart:
@@ -204,9 +201,6 @@ fn classify_alignment(r: &Alignment, query_id: usize, target_id: usize, overlaps
 
         // edge length = (l2 - e2) - (l1 - e1)
         let edge2_len_i64 = (l2 - e2) - (l1 - e1);
-        if edge2_len_i64 < 0 {
-            println!("Warning: negative edge length encountered in overlap classification.");
-        }
         let edge2_len = edge2_len_i64 as u32;
 
         // shared stats
@@ -217,28 +211,23 @@ fn classify_alignment(r: &Alignment, query_id: usize, target_id: usize, overlaps
         let edge1_len_orig = b1_orig - b2_orig;
         let edge2_len_orig = (l2_orig - e2_orig) - (l1_orig - e1_orig);
 
-        if edge1_len_orig < 0 || edge2_len_orig < 0 {
-            println!("Warning: negative original edge length encountered in overlap classification.");
-            println!("Press Enter to continue...");
-            let mut input = String::new();
-            io::stdin().read_line(&mut input).unwrap();
+        // create overlap object and store if the overlap is valid
+        // drop overlaps with negative original edge lengths, change in the future with a second all v all alignment
+        if edge1_len_orig > 0 && edge2_len_orig > 0 {
+            let ov = Overlap {
+                source_name: q_plus,
+                rc_sink_name: q_minus,
+                sink_name: t_orient,
+                rc_source_name: t_rc,
+                edge_len: edge1_len as u32,
+                edge_len_orig: edge1_len_orig as u32,
+                rc_edge_len: edge2_len as u32,
+                rc_edge_len_orig: edge2_len_orig as u32,
+                overlap_len: overlap_length as u32,
+                identity,
+            };
+            overlaps.insert((query_id, target_id), ov);
         }
-
-        // create overlap object and store
-        let ov = Overlap {
-            source_name: q_plus,
-            rc_sink_name: q_minus,
-            sink_name: t_orient,
-            rc_source_name: t_rc,
-            edge_len: edge1_len as u32,
-            edge_len_orig: edge1_len_orig as u32,
-            rc_edge_len: edge2_len as u32,
-            rc_edge_len_orig: edge2_len_orig as u32,
-            overlap_len: overlap_length as u32,
-            identity,
-        };
-        overlaps.insert((query_id, target_id), ov);
-
     } 
     else {
 
@@ -248,9 +237,6 @@ fn classify_alignment(r: &Alignment, query_id: usize, target_id: usize, overlaps
         let t_orient = format!("{}{}", r.target_name, r.strand);
 
         let edge1_len_i64 = b2 - b1;
-        if edge1_len_i64 < 0 {
-            println!("Warning: negative edge length encountered in overlap classification.");
-        }
         let edge1_len = edge1_len_i64 as u32;
 
         // reverse complement counterpart:
@@ -260,9 +246,6 @@ fn classify_alignment(r: &Alignment, query_id: usize, target_id: usize, overlaps
         let t_rc = format!("{}{}", r.target_name, rc_strand);
 
         let edge2_len_i64 = (l1 - e1) - (l2 - e2);
-        if edge2_len_i64 < 0 {
-            println!("Warning: negative edge length encountered in overlap classification.");
-        }
         let edge2_len = edge2_len_i64 as u32;
 
         // shared stats
@@ -273,27 +256,23 @@ fn classify_alignment(r: &Alignment, query_id: usize, target_id: usize, overlaps
         let edge1_len_orig = b2_orig - b1_orig;
         let edge2_len_orig = (l1_orig - e1_orig) - (l2_orig - e2_orig);
 
-        if edge1_len_orig < 0 || edge2_len_orig < 0 {
-            println!("Warning: negative original edge length encountered in overlap classification.");
-            println!("Press Enter to continue...");
-            let mut input = String::new();
-            io::stdin().read_line(&mut input).unwrap();
-        }
-
         // create overlap object and store
-        let ov = Overlap {
-            source_name: t_orient,
-            rc_source_name: q_minus,
-            sink_name: q_plus,
-            rc_sink_name: t_rc,
-            edge_len: edge1_len as u32,
-            edge_len_orig: edge1_len_orig as u32,
-            rc_edge_len: edge2_len as u32,
-            rc_edge_len_orig: edge2_len_orig as u32,
-            overlap_len: overlap_length as u32,
-            identity,
-        };
-        overlaps.insert((query_id, target_id), ov);
+        // drop overlaps with negative original edge lengths, change in the future with a second all v all alignment
+        if edge1_len_orig > 0 && edge2_len_orig > 0 {
+            let ov = Overlap {
+                source_name: t_orient,
+                rc_source_name: q_minus,
+                sink_name: q_plus,
+                rc_sink_name: t_rc,
+                edge_len: edge1_len as u32,
+                edge_len_orig: edge1_len_orig as u32,
+                rc_edge_len: edge2_len as u32,
+                rc_edge_len_orig: edge2_len_orig as u32,
+                overlap_len: overlap_length as u32,
+                identity,
+            };
+            overlaps.insert((query_id, target_id), ov);
+        }
     }
     AlignmentType::ProperOverlap
 }

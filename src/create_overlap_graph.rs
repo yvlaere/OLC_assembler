@@ -100,13 +100,6 @@ pub fn create_overlap_graph(overlaps: HashMap<(usize, usize), Overlap>) -> Resul
     for ((_query_id, _target_id), o) in overlaps.iter() {
         // add overlap to the graph
 
-        if o.edge_len_orig > 1000000 || o.rc_edge_len_orig > 1000000 {
-            println!("warning: very large edge length {}, {} detected, pausing for debug", o.edge_len_orig, o.rc_edge_len_orig);
-            println!("Press Enter to continue...");
-            let mut input = String::new();
-            io::stdin().read_line(&mut input).unwrap();
-        }
-
         // original orientation
         g.add_node(o.source_name.clone());
         g.add_node(o.sink_name.clone());
