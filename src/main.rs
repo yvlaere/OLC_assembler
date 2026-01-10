@@ -39,21 +39,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let min_percent_identity: f32 = 5.0; // 100/2000 = 5%
     let max_overhang = 0;
     let overhang_ratio = 0.8;
-    //let overlaps = alignment_filtering::filter_paf(&args[1], &min_overlap_length, &min_overlap_count, &min_percent_identity, &max_overhang, &overhang_ratio);
+    let overlaps = alignment_filtering::filter_paf(&args[1], &min_overlap_length, &min_overlap_count, &min_percent_identity, &max_overhang, &overhang_ratio);
 
     // deserialize overlaps, debugging
-    fn load_overlaps(path: &str) -> Result<HashMap<(usize, usize), Overlap>, Box<dyn std::error::Error>> {
-        let file = File::open(path)?;
-        let reader = BufReader::new(file);
-        let overlaps = bincode::deserialize_from(reader);
-        Ok(overlaps?)
-    }
-    println!("Loading overlaps from binary file...");
-    let overlaps = load_overlaps("overlaps.bin")?;
-    println!("Loaded {} overlaps", overlaps.len());
+    //fn load_overlaps(path: &str) -> Result<HashMap<(usize, usize), Overlap>, Box<dyn std::error::Error>> {
+    //    let file = File::open(path)?;
+    //    let reader = BufReader::new(file);
+    //    let overlaps = bincode::deserialize_from(reader);
+    //    Ok(overlaps?)
+    //}
+    //println!("Loading overlaps from binary file...");
+    //let overlaps = load_overlaps("overlaps.bin")?;
+    //println!("Loaded {} overlaps", overlaps.len());
 
     // Then create the overlap graph
-    let mut graph = create_overlap_graph::create_overlap_graph(overlaps)?;
+    let mut graph = create_overlap_graph::create_overlap_graph(overlaps?)?;//?)?;//)?;
 
     // Check that the bigraph is synchronized
     graph_analysis::check_synchronization(&graph);
@@ -144,6 +144,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Compressing graph into unitigs...");
     let compressed_graph = compress_graph::compress_unitigs(&graph, reads_fq, out_fasta);
     println!("Compressed graph has {} unitigs", compressed_graph.unitigs.len());
+
+    // debug pause
+    println!("Press Enter to continue...");
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).unwrap();
     
     // unitig length stats
     let mut unitig_lengths: Vec<usize> = compressed_graph.unitigs.iter().map(|u| u.members.len()).collect();

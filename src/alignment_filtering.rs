@@ -217,6 +217,13 @@ fn classify_alignment(r: &Alignment, query_id: usize, target_id: usize, overlaps
         let edge1_len_orig = b1_orig - b2_orig;
         let edge2_len_orig = (l2_orig - e2_orig) - (l1_orig - e1_orig);
 
+        if edge1_len_orig < 0 || edge2_len_orig < 0 {
+            println!("Warning: negative original edge length encountered in overlap classification.");
+            println!("Press Enter to continue...");
+            let mut input = String::new();
+            io::stdin().read_line(&mut input).unwrap();
+        }
+
         // create overlap object and store
         let ov = Overlap {
             source_name: q_plus,
@@ -265,6 +272,13 @@ fn classify_alignment(r: &Alignment, query_id: usize, target_id: usize, overlaps
         // calculate original edge lengths without coverage adjustment
         let edge1_len_orig = b2_orig - b1_orig;
         let edge2_len_orig = (l1_orig - e1_orig) - (l2_orig - e2_orig);
+
+        if edge1_len_orig < 0 || edge2_len_orig < 0 {
+            println!("Warning: negative original edge length encountered in overlap classification.");
+            println!("Press Enter to continue...");
+            let mut input = String::new();
+            io::stdin().read_line(&mut input).unwrap();
+        }
 
         // create overlap object and store
         let ov = Overlap {

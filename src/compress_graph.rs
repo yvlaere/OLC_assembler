@@ -8,6 +8,9 @@ use std::collections::{HashMap, HashSet};
 use std::io::BufRead;
 use crate::utils;
 
+// for debugging
+use crate::io;
+
 pub struct UnitigMember {
     pub node_id: String,
     // id of target node and edge length to that node
@@ -94,6 +97,13 @@ pub fn compress_unitigs(graph: &crate::create_overlap_graph::OverlapGraph, fastq
                     (e.target_id.clone(), e.edge_len)
                 };
 
+                if edge_len > 1000000 {
+                    println!("warning: very large edge length {} detected, pausing for debug", edge_len);
+                    println!("Press Enter to continue...");
+                    let mut input = String::new();
+                    io::stdin().read_line(&mut input).unwrap();
+                }
+
                 println!("checking second node {}", second);
                 let second_indegree = *indegree.get(&second).unwrap_or(&0);
                 // don't add the node that breaks the chain
@@ -107,6 +117,14 @@ pub fn compress_unitigs(graph: &crate::create_overlap_graph::OverlapGraph, fastq
                 
                 // extend forward from second untill the end
                 while let Some((next, edge_len)) = out_single(graph, &cur) {
+
+                    if edge_len > 1000000 {
+                        println!("warning: very large edge length {} detected, pausing for debug", edge_len);
+                        println!("Press Enter to continue...");
+                        let mut input = String::new();
+                        io::stdin().read_line(&mut input).unwrap();
+                    }
+
                     println!("extending unitig");
                     let next_indegree = *indegree.get(&next).unwrap_or(&0);
                     // don't add the node that breaks the chain
