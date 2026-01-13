@@ -118,10 +118,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let (_indegree_dist, outdegree_dist) = graph_analysis::analyze_degrees(&graph);
         let high_branch = outdegree_dist.iter().filter(|(deg, _)| **deg > 1).map(|(_, count)| *count).sum::<usize>();
         let very_high = outdegree_dist.iter().filter(|(deg, _)| **deg >= 3).map(|(_, count)| *count).sum::<usize>();
+        let current_edges: usize = graph.nodes.values().map(|n| n.edges.len()).sum();
 
         println!("\nIteration {} stats:", iteration);
         println!("Current nodes: {}", graph.nodes.len());
-        let current_edges: usize = graph.nodes.values().map(|n| n.edges.len()).sum();
         println!("Current edges: {}", current_edges);
         println!("Node/edge ratio: {:.4}", graph.nodes.len() as f64 / current_edges as f64);
         println!("Nodes with out-degree > 1: {}", high_branch);

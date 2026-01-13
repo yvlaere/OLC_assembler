@@ -9,3 +9,5 @@ GCA_046599155.1_ASM4659915v1_genomic.fna
 /comparison
 largest_contig.fna
 out.fna
+/new_comparison
+test_assembly.fna
