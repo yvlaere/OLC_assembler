@@ -103,12 +103,12 @@ pub fn create_overlap_graph(overlaps: HashMap<(usize, usize), Overlap>) -> Resul
         // original orientation
         g.add_node(o.source_name.clone());
         g.add_node(o.sink_name.clone());
-        g.add_edge(&o.source_name, &o.sink_name, o.edge_len_orig, o.overlap_len, o.identity);
+        g.add_edge(&o.source_name, &o.sink_name, o.edge_len, o.overlap_len, o.identity);
 
         // reverse complement counterpart:
         g.add_node(o.rc_source_name.clone());
         g.add_node(o.rc_sink_name.clone());
-        g.add_edge(&o.rc_source_name, &o.rc_sink_name, o.rc_edge_len_orig, o.overlap_len, o.identity);
+        g.add_edge(&o.rc_source_name, &o.rc_sink_name, o.rc_edge_len, o.overlap_len, o.identity);
     }
 
     // graph stats

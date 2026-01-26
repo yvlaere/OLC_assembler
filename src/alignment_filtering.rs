@@ -48,9 +48,7 @@ pub struct Overlap {
     pub sink_name: String,
     pub rc_source_name: String,
     pub edge_len: u32,
-    pub edge_len_orig: u32,
     pub rc_edge_len: u32,
-    pub rc_edge_len_orig: u32,
     pub overlap_len: u32,
     pub identity: f64,
 }
@@ -108,16 +106,6 @@ fn classify_alignment(r: &Alignment, query_id: usize, target_id: usize, overlaps
     let query_length = (reads[query_id].coverage_end - reads[query_id].coverage_start) as i64;
     let target_length = (reads[target_id].coverage_end - reads[target_id].coverage_start) as i64;
     
-    // calculate the original coordinates before coverage adjustment
-    let b1_orig = r.query_start as i64;
-    let e1_orig = r.query_end as i64;
-    let l1_orig = r.query_length as i64;
-    let (b2_orig, e2_orig, l2_orig) = if r.strand == '+' {
-        (r.target_start as i64, r.target_end as i64, r.target_length as i64)
-    } else {
-        (r.target_length as i64 - r.target_end as i64, r.target_length as i64 - r.target_start as i64, r.target_length as i64)
-    };
-
     // using naming convention corresponding with miniasm paper
     let b1 = query_start;
     let e1 = query_end;
@@ -207,27 +195,18 @@ fn classify_alignment(r: &Alignment, query_id: usize, target_id: usize, overlaps
         let overlap_len = r.alignment_block_length as u32;
         let identity = r.percent_identity() as f64;
 
-        // calculate original edge lengths without coverage adjustment
-        let edge1_len_orig = b1_orig - b2_orig;
-        let edge2_len_orig = (l2_orig - e2_orig) - (l1_orig - e1_orig);
-
         // create overlap object and store if the overlap is valid
-        // drop overlaps with negative original edge lengths, change in the future with a second all v all alignment
-        if edge1_len_orig > 0 && edge2_len_orig > 0 {
-            let ov = Overlap {
-                source_name: q_plus,
-                rc_sink_name: q_minus,
-                sink_name: t_orient,
-                rc_source_name: t_rc,
-                edge_len: edge1_len as u32,
-                edge_len_orig: edge1_len_orig as u32,
-                rc_edge_len: edge2_len as u32,
-                rc_edge_len_orig: edge2_len_orig as u32,
-                overlap_len: overlap_length as u32,
-                identity,
-            };
-            overlaps.insert((query_id, target_id), ov);
-        }
+        let ov = Overlap {
+            source_name: q_plus,
+            rc_sink_name: q_minus,
+            sink_name: t_orient,
+            rc_source_name: t_rc,
+            edge_len: edge1_len as u32,
+            rc_edge_len: edge2_len as u32,
+            overlap_len: overlap_length as u32,
+            identity,
+        };
+        overlaps.insert((query_id, target_id), ov);
     } 
     else {
 
@@ -252,27 +231,18 @@ fn classify_alignment(r: &Alignment, query_id: usize, target_id: usize, overlaps
         let overlap_len = r.alignment_block_length as u32;
         let identity = r.percent_identity() as f64;
 
-        // calculate original edge lengths without coverage adjustment
-        let edge1_len_orig = b2_orig - b1_orig;
-        let edge2_len_orig = (l1_orig - e1_orig) - (l2_orig - e2_orig);
-
         // create overlap object and store
-        // drop overlaps with negative original edge lengths, change in the future with a second all v all alignment
-        if edge1_len_orig > 0 && edge2_len_orig > 0 {
-            let ov = Overlap {
-                source_name: t_orient,
-                rc_source_name: q_minus,
-                sink_name: q_plus,
-                rc_sink_name: t_rc,
-                edge_len: edge1_len as u32,
-                edge_len_orig: edge1_len_orig as u32,
-                rc_edge_len: edge2_len as u32,
-                rc_edge_len_orig: edge2_len_orig as u32,
-                overlap_len: overlap_length as u32,
-                identity,
-            };
-            overlaps.insert((query_id, target_id), ov);
-        }
+        let ov = Overlap {
+            source_name: t_orient,
+            rc_source_name: q_minus,
+            sink_name: q_plus,
+            rc_sink_name: t_rc,
+            edge_len: edge1_len as u32,
+            rc_edge_len: edge2_len as u32,
+            overlap_len: overlap_length as u32,
+            identity,
+        };
+        overlaps.insert((query_id, target_id), ov);
     }
     AlignmentType::ProperOverlap
 }
