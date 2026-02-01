@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, BufWriter, Write};
 use crate::alignment_filtering::Overlap;
 use std::io;
 
@@ -88,6 +88,73 @@ impl OverlapGraph {
         if let Some(node) = self.nodes.get_mut(from_id) {
             node.add_edge(to_id, edge_len, overlap_len, identity);
         }
+    }
+
+    /// Write the overlap graph to a DOT file for visualization
+    pub fn write_dot<P: AsRef<std::path::Path>>(&self, path: P) -> std::io::Result<()> {
+
+        // helper functions
+        fn escape_dot(s: &str) -> String {
+            s.replace('\\', "\\\\").replace('"', "\\\"")
+        }
+
+        fn degree_color(degree: usize) -> &'static str {
+            match degree {
+                0 => "gray",
+                1 => "black",
+                2 => "blue",
+                3..=5 => "orange",
+                _ => "red",
+            }
+        }
+
+        let file = File::create(path)?;
+        let mut w = BufWriter::new(file);
+
+        // gather stats
+        let mut outdegrees: HashMap<String, usize> = HashMap::new();
+        let mut indegrees: HashMap<String, usize> = HashMap::new();
+        for node in self.nodes.values() {
+            *outdegrees.entry(node.node_id.clone()).or_insert(0) += node.edges.len();
+            for e in &node.edges {
+                *indegrees.entry(e.target_id.clone()).or_insert(0) += 1;
+            }
+        }
+
+        writeln!(w, "digraph OverlapGraph {{")?;
+        writeln!(w, "  rankdir=LR;")?;
+        writeln!(w, "  node [shape=box fontname=\"Helvetica\"];")?;
+        writeln!(w, "  edge [fontname=\"Helvetica\"];")?;
+        writeln!(w)?;
+
+        // Emit nodes explicitly (optional but useful for styling later)
+        for node_id in self.nodes.keys() {
+            writeln!(
+                w,
+                "  \"{}\" [style=filled fillcolor={} ];",
+                escape_dot(node_id), degree_color(*outdegrees.get(node_id).unwrap_or(&0))
+            )?;
+        }
+
+        writeln!(w)?;
+
+        // Emit edges
+        for node in self.nodes.values() {
+            let from = escape_dot(&node.node_id);
+            for e in &node.edges {
+                let to = escape_dot(&e.target_id);
+                writeln!(
+                    w,
+                    "  \"{}\" -> \"{}\";",
+                    from, to
+                    //"  \"{}\" -> \"{}\" [label=\"len={} ovl={} id={:.3}\"];",
+                    //from, to, e.edge_len, e.overlap_len, e.identity
+                )?;
+            }
+        }
+
+        writeln!(w, "}}")?;
+        Ok(())
     }
 }
 
