@@ -1,5 +1,4 @@
 mod alignment_filtering;
-mod filter_paf;
 mod create_overlap_graph;
 mod transitive_edge_reduction;
 mod graph_analysis;
@@ -7,6 +6,7 @@ mod compress_graph;
 mod tip_trimming;
 mod bubble_removal;
 mod utils;
+mod heuristic_simplification;
 
 use std::env;
 use std::io;
@@ -39,21 +39,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let min_percent_identity: f32 = 5.0; // 100/2000 = 5%
     let max_overhang = 0;
     let overhang_ratio = 0.8;
-    let overlaps = alignment_filtering::filter_paf(&args[1], &min_overlap_length, &min_overlap_count, &min_percent_identity, &max_overhang, &overhang_ratio);
+    //let overlaps = alignment_filtering::filter_paf(&args[1], &min_overlap_length, &min_overlap_count, &min_percent_identity, &max_overhang, &overhang_ratio);
 
     // deserialize overlaps, debugging
-    //fn load_overlaps(path: &str) -> Result<HashMap<(usize, usize), Overlap>, Box<dyn std::error::Error>> {
-    //    let file = File::open(path)?;
-    //    let reader = BufReader::new(file);
-    //    let overlaps = bincode::deserialize_from(reader);
-    //    Ok(overlaps?)
-    //}
-    //println!("Loading overlaps from binary file...");
-    //let overlaps = load_overlaps("overlaps.bin")?;
-    //println!("Loaded {} overlaps", overlaps.len());
+    fn load_overlaps(path: &str) -> Result<HashMap<(usize, usize), Overlap>, Box<dyn std::error::Error>> {
+        let file = File::open(path)?;
+        let reader = BufReader::new(file);
+        let overlaps = bincode::deserialize_from(reader);
+        Ok(overlaps?)
+    }
+    println!("Loading overlaps from binary file...");
+    let overlaps = load_overlaps("overlaps.bin")?;
+    println!("Loaded {} overlaps", overlaps.len());
 
     // Then create the overlap graph
-    let mut graph = create_overlap_graph::create_overlap_graph(overlaps?)?;//?)?;//)?;
+    let mut graph = create_overlap_graph::create_overlap_graph(overlaps)?;//?)?;//)?;
 
     // Check that the bigraph is synchronized
     graph_analysis::check_synchronization(&graph);
@@ -138,7 +138,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let final_components = graph_analysis::weakly_connected_components(&graph);
     println!("Final weakly connected components: {}", final_components.len());
 
-    // count nodes with outdegree > 1
+    for (component_id, component) in final_components.iter().enumerate() {
+        println!("Component {}: {} nodes", component_id + 1, component.len());
+    }
+
+    // write graph to DOT file for visualization
+    graph.write_dot("overlap_before_heuristic.dot").unwrap();
+
+    // heuristic simplification: remove low identity edges from nodes with multiple out-edges
+    println!("Applying heuristic simplification: removing weak edges...");
+    heuristic_simplification::remove_weak(&mut graph);
+
+    // weakly connected components after cleanup
+    let final_components = graph_analysis::weakly_connected_components(&graph);
+    println!("Final weakly connected components: {}", final_components.len());
+
+    for (component_id, component) in final_components.iter().enumerate() {
+        println!("Component {}: {} nodes", component_id + 1, component.len());
+    }
+
+    // debug pause
+    println!("Press Enter to continue...");
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).unwrap();
+
+    // write graph to DOT file for visualization
+    //graph.write_dot("overlap_after_heuristic.dot").unwrap();
 
     // graph compression into unitigs
     println!("Compressing graph into unitigs...");
