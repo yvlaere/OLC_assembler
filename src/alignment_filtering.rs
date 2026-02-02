@@ -40,28 +40,6 @@ struct Alignment {
     mapq: u8,
 }
 
-// Struct to hold overlap information
-#[derive(Serialize, Deserialize)]
-pub struct Overlap {
-    pub source_name: String,
-    pub rc_sink_name: String,
-    pub sink_name: String,
-    pub rc_source_name: String,
-    pub edge_len: u32,
-    pub rc_edge_len: u32,
-    pub overlap_len: u32,
-    pub identity: f64,
-}
-
-/// Enum for alignment classification
-enum AlignmentType {
-    Filtered,
-    InternalMatch,
-    FirstContained,
-    SecondContained,
-    ProperOverlap,
-}
-
 // Implement methods for Alignment (kind of like class methods)
 impl Alignment {
     fn from_line(line: &str) -> Option<Self> {
@@ -91,6 +69,44 @@ impl Alignment {
     fn percent_identity(&self) -> f32 {
         (self.num_matching as f32 / self.alignment_block_length as f32) * 100.0
     }
+}
+
+/// Enum for alignment classification
+enum AlignmentType {
+    Filtered,
+    InternalMatch,
+    FirstContained,
+    SecondContained,
+    ProperOverlap,
+}
+
+// Struct to hold overlap information
+#[derive(Serialize, Deserialize)]
+pub struct Overlap {
+    pub source_name: String,
+    pub rc_sink_name: String,
+    pub sink_name: String,
+    pub rc_source_name: String,
+    pub edge_len: u32,
+    pub rc_edge_len: u32,
+    pub overlap_len: u32,
+    pub identity: f64,
+}
+
+pub struct AlignmentFilteringOutput {
+    pub overlaps: HashMap<(usize, usize), Overlap>,
+}
+
+impl AlignmentFilteringOutput {
+
+    // serialize the overlaps
+    fn serialize_overlaps(&self, path: &str,) -> Result<()> {
+        let file = File::create(path)?;
+        let writer = BufWriter::new(file);
+        bincode::serialize_into(writer, &self.overlaps)?;
+        Ok(())
+    }
+    self.serialize_overlaps("overlaps.bin").expect("Failed to save overlaps.");
 }
 
 /// Classify alignment and update contained reads set
@@ -248,7 +264,7 @@ fn classify_alignment(r: &Alignment, query_id: usize, target_id: usize, overlaps
 }
 
 /// Filter PAF file based on overlap quality criteria
-pub fn filter_paf(paf_in: &str, min_overlap_length: &u32, min_overlap_count: &u32, min_percent_identity: &f32, max_overhang: &u32, overhang_ratio: &f64) -> Result<HashMap<(usize, usize), Overlap>, io::Error> {
+pub fn run_alignment_filtering(paf_in: &str, min_overlap_length: &u32, min_overlap_count: &u32, min_percent_identity: &f32, overhang_ratio: &f64) -> AlignmentFilteringOutput {
 
     // Setup data structures
     // read name to read id mapping
@@ -452,14 +468,5 @@ pub fn filter_paf(paf_in: &str, min_overlap_length: &u32, min_overlap_count: &u3
     println!("=== PHASE 3 FINISHED ===");
     println!("=== ALIGNMENT FILTERING FINISHED ===");
 
-    // serialize the overlaps
-    fn save_overlaps(path: &str, overlaps: &HashMap<(usize, usize), Overlap>,) -> Result<(), Box<dyn std::error::Error>> {
-        let file = File::create(path)?;
-        let writer = BufWriter::new(file);
-        bincode::serialize_into(writer, overlaps)?;
-        Ok(())
-    }
-    save_overlaps("overlaps.bin", &overlaps).expect("Failed to save overlaps.");
-
-    return Ok(overlaps);
+    return AlignmentFilteringOutput { overlaps };
 }

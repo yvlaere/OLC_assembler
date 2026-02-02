@@ -51,7 +51,7 @@ pub struct AlignmentFilteringArgs {
 impl From<&AlignmentFilteringArgs> for crate::configs::AlignmentFilteringConfig {
     fn from(args: &AlignmentFilteringArgs) -> Self {
         Self {
-            input_paf: args.input_paf,
+            input_paf: args.input_paf.clone(),
             min_overlap_length: args.min_overlap_length,
             min_overlap_count: args.min_overlap_count,
             min_percent_identity: args.min_percent_identity,
@@ -78,24 +78,42 @@ impl From<&CreateOverlapGraphArgs> for crate::configs::CreateOverlapGraphConfig 
 
 #[derive(Args)]
 pub struct CreateUnitigsArgs {
-    
+    /// Input overlap graph binary file
+    #[arg(short, long)]
+    pub overlap_graph_binary: String,
+
+    /// Input reads in FASTQ format
+    #[arg(short = 'r', long)]
+    pub reads_fq: String,
+
+    /// Output prefix
+    #[arg(short = 'p', long, default_value = "unitigs")]
+    pub output_prefix: String,
+
+    /// Output directory
+    #[arg(short = 'o', long, default_value = ".")]
+    pub output_dir: String,
+}
+
+impl From<&CreateUnitigsArgs> for crate::configs::UnitigConfig {
+    fn from(args: &CreateUnitigsArgs) -> Self {
+        Self {
+            overlap_graph_binary: args.overlap_graph_binary.clone(),
+            reads_fq: args.reads_fq.clone(),
+            output_prefix: args.output_prefix.clone(),
+            output_dir: args.output_dir.clone(),
+        }
+    }
+}
 
 #[derive(Args)]
 pub struct AssembleArgs {
 
-    /// Input PAF file
-    #[arg(short = 'a', long = "alignments")]
-    pub input_paf: String,
+    // Alignment filtering parameters
+    #[arg(flatten)]
+    pub alignment_filtering: AlignmentFilteringArgs,
 
-    /// Input reads in FASTQ format
-    #[arg(short = 'r', long = "reads")]
-    pub reads_fq: String,
-
-    /// Output prefix
-    #[arg(short = 'p', long = "prefix", default_value = "assembly")]
-    pub output_prefix: String,
-
-    /// Output directory
-    #[arg(short = 'o', long = "out_dir", default_value = ".")]
-    pub output_dir: String,
+    // Create unitigs parameters
+    #[arg(flatten)]
+    pub create_unitigs: CreateUnitigsArgs,
 }

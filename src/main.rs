@@ -1,16 +1,20 @@
+mod cli;
+mod configs;
 mod alignment_filtering;
 mod create_overlap_graph;
 mod transitive_edge_reduction;
-mod graph_analysis;
-mod compress_graph;
 mod tip_trimming;
 mod bubble_removal;
+mod graph_analysis;
+mod compress_graph;
 mod utils;
 mod heuristic_simplification;
 
 use std::env;
 use std::io;
 use std::collections::HashSet;
+use clap::Parser;
+use cli::{Cli, Commands};
 
 // used for deserializing overlaps, debugging
 use std::io::BufReader;
@@ -20,25 +24,33 @@ use std::collections::HashMap;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 
-    let args: Vec<String> = env::args().collect();
-    if args.len() != 4 {
-        eprintln!("Usage: {} <input.paf> <reads.fq> <out.fna>", args[0]);
-        std::process::exit(1);
-    }
+    let cli = Cli::parse();
 
+    match &cli.command {
+        Commands::AlignmentFiltering(args) => {
+            let config: crate::configs::AlignmentFilteringConfig = args.into();
+            alignment_filtering::run_alignment_filtering(&config)?;
+        },
+        Commands::CreateOverlapGraph(args) => {
+            let config: crate::configs::CreateOverlapGraphConfig = args.into();
+            create_overlap_graph::run_create_overlap_graph(&config)?;
+        },
+        Commands::CreateUnitigs(args) => {
+            let config: crate::configs::UnitigConfig = args.into();
+            compress_graph::run_create_unitigs(&config)?;
+        },
+        Commands::Assemble(args) => {
+            let config: crate::configs::UnitigConfig = args.into();
+            run_assemble_pipeline(&config)?;
+        },
+    }
+    Ok(())
+}
     let reads_fq = &args[2];
     let out_fasta = &args[3];
 
-    println!("Filtering PAF: {}", &args[1]);
-
     // First filter the PAF file
 
-    // Configuration
-    let min_overlap_length: u32 = 2000;
-    let min_overlap_count: u32 = 3;
-    let min_percent_identity: f32 = 5.0; // 100/2000 = 5%
-    let max_overhang = 0;
-    let overhang_ratio = 0.8;
     //let overlaps = alignment_filtering::filter_paf(&args[1], &min_overlap_length, &min_overlap_count, &min_percent_identity, &max_overhang, &overhang_ratio);
 
     // deserialize overlaps, debugging
@@ -213,5 +225,5 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Nodes with out-degree > 1: {}", big_outdegree_count);
     println!("Final node to edge ratio: {:.4}", final_node_count as f64 / final_edge_count as f64);
 
-    Ok(())
+
 }
