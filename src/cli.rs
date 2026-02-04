@@ -27,8 +27,12 @@ pub enum Commands {
 pub struct AlignmentFilteringArgs {
 
     /// Input PAF file
-    #[arg(short, long)]
+    #[arg(short = 'f', long)]
     pub input_paf: String,
+
+    /// Output overlaps binary file
+    #[arg(long, default_value = "overlaps.bin")]
+    pub output_overlaps: String,
 
     /// Minimum overlap length
     #[arg(short = 'l', long, default_value_t = 2000)]
@@ -43,7 +47,7 @@ pub struct AlignmentFilteringArgs {
     pub min_percent_identity: f32,
 
     /// Overhang ratio
-    #[arg(short = 'h', long, default_value_t = 0.8)]
+    #[arg(long, default_value_t = 0.8)]
     pub overhang_ratio: f32,
 
 }
@@ -52,6 +56,7 @@ impl From<&AlignmentFilteringArgs> for crate::configs::AlignmentFilteringConfig 
     fn from(args: &AlignmentFilteringArgs) -> Self {
         Self {
             input_paf: args.input_paf.clone(),
+            output_overlaps: args.output_overlaps.clone(),
             min_overlap_length: args.min_overlap_length,
             min_overlap_count: args.min_overlap_count,
             min_percent_identity: args.min_percent_identity,
@@ -63,23 +68,23 @@ impl From<&AlignmentFilteringArgs> for crate::configs::AlignmentFilteringConfig 
 #[derive(Args)]
 pub struct CreateOverlapGraphArgs {
 
-    /// Overlap binary file
-    #[arg(short = 'b', long, default_value = "overlaps.bin")]
-    pub overlap_binary: String,
-}
+    /// Overlaps binary file produced by alignment filtering
+    #[arg(short = 'b', long)]
+    pub overlaps: String,
+} 
 
 impl From<&CreateOverlapGraphArgs> for crate::configs::CreateOverlapGraphConfig {
     fn from(args: &CreateOverlapGraphArgs) -> Self {
         Self {
-            overlap_binary: args.overlap_binary.clone(),
+            overlaps: args.overlaps.clone(),
         }
     }
-}
+} 
 
 #[derive(Args)]
 pub struct CreateUnitigsArgs {
-    /// Input overlap graph binary file
-    #[arg(short, long)]
+    /// Input overlap graph binary file (serialized overlaps hash)
+    #[arg(short = 'b', long)]
     pub overlap_graph_binary: String,
 
     /// Input reads in FASTQ format
@@ -110,10 +115,18 @@ impl From<&CreateUnitigsArgs> for crate::configs::UnitigConfig {
 pub struct AssembleArgs {
 
     // Alignment filtering parameters
-    #[arg(flatten)]
+    #[command(flatten)]
     pub alignment_filtering: AlignmentFilteringArgs,
 
-    // Create unitigs parameters
-    #[arg(flatten)]
-    pub create_unitigs: CreateUnitigsArgs,
+    /// Input reads in FASTQ format
+    #[arg(short = 'r', long)]
+    pub reads_fq: String,
+
+    /// Output prefix
+    #[arg(short = 'p', long, default_value = "unitigs")]
+    pub output_prefix: String,
+
+    /// Output directory
+    #[arg(short = 'o', long, default_value = ".")]
+    pub output_dir: String,
 }

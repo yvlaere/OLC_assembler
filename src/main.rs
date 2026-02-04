@@ -10,220 +10,154 @@ mod compress_graph;
 mod utils;
 mod heuristic_simplification;
 
-use std::env;
 use std::io;
-use std::collections::HashSet;
 use clap::Parser;
 use cli::{Cli, Commands};
+use std::collections::HashSet;
 
-// used for deserializing overlaps, debugging
+// used for deserializing overlaps
 use std::io::BufReader;
 use std::fs::File;
 use crate::alignment_filtering::Overlap;
 use std::collections::HashMap;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-
     let cli = Cli::parse();
 
     match &cli.command {
         Commands::AlignmentFiltering(args) => {
             let config: crate::configs::AlignmentFilteringConfig = args.into();
-            alignment_filtering::run_alignment_filtering(&config)?;
-        },
+            // run filtering and serialize overlaps to the configured output
+            let out = alignment_filtering::run_alignment_filtering(
+                &config.input_paf,
+                &config.min_overlap_length,
+                &config.min_overlap_count,
+                &config.min_percent_identity,
+                &config.overhang_ratio,
+            )?;
+            out.serialize_overlaps(&config.output_overlaps)?;
+            println!("Wrote overlaps to {}", config.output_overlaps);
+        }
         Commands::CreateOverlapGraph(args) => {
             let config: crate::configs::CreateOverlapGraphConfig = args.into();
-            create_overlap_graph::run_create_overlap_graph(&config)?;
-        },
+            // load overlaps from binary
+            let file = File::open(&config.overlaps)?;
+            let reader = BufReader::new(file);
+            let overlaps: HashMap<(usize, usize), Overlap> = bincode::deserialize_from(reader)?;
+            let graph = create_overlap_graph::run_create_overlap_graph(overlaps)?;
+            graph.write_dot("overlap_before_heuristic.dot")?;
+            println!("Wrote graph to overlap_before_heuristic.dot");
+        }
         Commands::CreateUnitigs(args) => {
             let config: crate::configs::UnitigConfig = args.into();
-            compress_graph::run_create_unitigs(&config)?;
-        },
+            let file = File::open(&config.overlap_graph_binary)?;
+            let reader = BufReader::new(file);
+            let overlaps: HashMap<(usize, usize), Overlap> = bincode::deserialize_from(reader)?;
+            let graph = create_overlap_graph::run_create_overlap_graph(overlaps)?;
+
+            let out_path = std::path::Path::new(&config.output_dir).join(format!("{}.fa", config.output_prefix));
+            let out_str = out_path.to_str().ok_or("invalid output path")?;
+            let compressed = compress_graph::compress_unitigs(&graph, &config.reads_fq, out_str);
+            println!("Compressed graph has {} unitigs, wrote to {}", compressed.unitigs.len(), out_str);
+        }
         Commands::Assemble(args) => {
-            let config: crate::configs::UnitigConfig = args.into();
-            run_assemble_pipeline(&config)?;
-        },
-    }
-    Ok(())
-}
-    let reads_fq = &args[2];
-    let out_fasta = &args[3];
+            // run alignment filtering
+            let alignment_cfg: crate::configs::AlignmentFilteringConfig = (&args.alignment_filtering).into();
 
-    // First filter the PAF file
+            // ensure output directory exists
+            let out_dir = std::path::Path::new(&args.output_dir);
+            std::fs::create_dir_all(out_dir)?;
 
-    //let overlaps = alignment_filtering::filter_paf(&args[1], &min_overlap_length, &min_overlap_count, &min_percent_identity, &max_overhang, &overhang_ratio);
+            // write overlaps into the output directory using the chosen prefix
+            let overlaps_path = out_dir.join(format!("{}.overlaps.bin", args.output_prefix));
+            let overlaps_path_str = overlaps_path.to_str().ok_or("invalid output path")?;
 
-    // deserialize overlaps, debugging
-    fn load_overlaps(path: &str) -> Result<HashMap<(usize, usize), Overlap>, Box<dyn std::error::Error>> {
-        let file = File::open(path)?;
-        let reader = BufReader::new(file);
-        let overlaps = bincode::deserialize_from(reader);
-        Ok(overlaps?)
-    }
-    println!("Loading overlaps from binary file...");
-    let overlaps = load_overlaps("overlaps.bin")?;
-    println!("Loaded {} overlaps", overlaps.len());
+            let out = alignment_filtering::run_alignment_filtering(
+                &alignment_cfg.input_paf,
+                &alignment_cfg.min_overlap_length,
+                &alignment_cfg.min_overlap_count,
+                &alignment_cfg.min_percent_identity,
+                &alignment_cfg.overhang_ratio,
+            )?;
+            out.serialize_overlaps(overlaps_path_str)?;
+            println!("Wrote overlaps to {}", overlaps_path_str);
 
-    // Then create the overlap graph
-    let mut graph = create_overlap_graph::create_overlap_graph(overlaps)?;//?)?;//)?;
+            // load overlaps, build graph
+            let file = File::open(overlaps_path_str)?;
+            let reader = BufReader::new(file);
+            let overlaps: HashMap<(usize, usize), Overlap> = bincode::deserialize_from(reader)?;
+            let mut graph = create_overlap_graph::run_create_overlap_graph(overlaps)?;
 
-    // Check that the bigraph is synchronized
-    graph_analysis::check_synchronization(&graph);
+            // Graph simplification: iterative cleanup
+            graph_analysis::check_synchronization(&graph);
+            println!("=== STARTING GRAPH CLEANUP ===");
+            let max_bubble_len = 8usize;
+            let min_support_ratio = 1.1f64;
+            let max_tip_len = 4usize;
+            let fuzz = 10u32;
 
-    // Iterative graph cleanup until convergence
-    println!("=== STARTING GRAPH CLEANUP ===");
-    let max_bubble_len = 8;  // Max edges per bubble path
-    let min_support_ratio = 1.1;  // Require 10% stronger path for removal
-    let max_tip_len = 4;  // Maximum tip length to remove
-    let fuzz = 10;  // Fuzz factor for transitive reduction
+            for iteration in 1..=10 {
+                println!("\n=== Cleanup Iteration {} ===", iteration);
 
-    let mut iteration = 1;
-    let mut prev_node_count = graph.nodes.len() + 1;  // Ensure first iteration runs
+                // transitive edge reduction
+                let edges_before: usize = graph.nodes.values().map(|n| n.edges.len()).sum();
+                transitive_edge_reduction::reduce_transitive_edges(&mut graph, fuzz);
+                let edges_after: usize = graph.nodes.values().map(|n| n.edges.len()).sum();
+                println!("Removed {} edges with transitive edge reduction", edges_before.saturating_sub(edges_after));
 
-    for i in 0..10 {
-        prev_node_count = graph.nodes.len();
-        println!("\n=== Cleanup Iteration {} ===", iteration);
+                // bubble removal
+                let node_count_before = graph.nodes.len();
+                bubble_removal::remove_bubbles(&mut graph, max_bubble_len, min_support_ratio);
+                let node_count_after = graph.nodes.len();
+                println!("Removed {} bubble nodes (including RCs)", node_count_before.saturating_sub(node_count_after));
 
-        // 1) Transitive edge reduction
-        let edges_before: usize = graph.nodes.values().map(|n| n.edges.len()).sum();
-        transitive_edge_reduction::reduce_transitive_edges(&mut graph, fuzz);
-        let edges_after: usize = graph.nodes.values().map(|n| n.edges.len()).sum();
-        println!("Removed {} edges with transitive edge reduction", edges_before.saturating_sub(edges_after));
-
-        // 2) Bubble popping
-        let node_count_before_bubble_popping = graph.nodes.len();
-        bubble_removal::remove_bubbles(&mut graph, max_bubble_len, min_support_ratio);
-        let node_count_after_bubble_popping = graph.nodes.len();
-        println!("Removed {} bubble nodes (including RCs)", node_count_before_bubble_popping - node_count_after_bubble_popping);
-
-        // 3) Remove small components (size < 2)
-        let components = graph_analysis::weakly_connected_components(&graph);
-        let mut comp_nodes_to_remove: HashSet<String> = HashSet::new();
-        for component in components.iter() {
-            if component.len() < 2 {
-                for nid in component.iter() {
-                    comp_nodes_to_remove.insert(nid.clone());
+                // remove small components (<2)
+                let components = graph_analysis::weakly_connected_components(&graph);
+                let mut comp_nodes_to_remove: HashSet<String> = HashSet::new();
+                for component in components.iter() {
+                    if component.len() < 2 {
+                        for nid in component.iter() {
+                            comp_nodes_to_remove.insert(nid.clone());
+                        }
+                    }
                 }
+                let small_comp_count = comp_nodes_to_remove.len();
+                for node_id in comp_nodes_to_remove.iter() {
+                    graph.nodes.remove(node_id.as_str());
+                    if node_id.ends_with('+') {
+                        let rc = node_id[..node_id.len()-1].to_string() + "-";
+                        graph.nodes.remove(rc.as_str());
+                    } else if node_id.ends_with('-') {
+                        let rc = node_id[..node_id.len()-1].to_string() + "+";
+                        graph.nodes.remove(rc.as_str());
+                    }
+                }
+                println!("Removed {} oriented nodes from small components (<2)", small_comp_count);
+
+                // tip trimming
+                let before_trim = graph.nodes.len();
+                tip_trimming::trim_tips(&mut graph, max_tip_len);
+                let after_trim = graph.nodes.len();
+                println!("Removed {} nodes by tip trimming", before_trim.saturating_sub(after_trim));
+
             }
+
+            // heuristic simplification
+            println!("Applying heuristic simplification: removing weak edges...");
+            heuristic_simplification::remove_weak(&mut graph);
+
+            // write graph snapshot into output dir
+            let dot_path = out_dir.join("overlap_before_compression.dot");
+            let dot_str = dot_path.to_str().ok_or("invalid output path")?;
+            graph.write_dot(dot_str)?;
+
+            // compress into unitigs into output dir
+            let out_path = out_dir.join(format!("{}.fa", args.output_prefix));
+            let out_str = out_path.to_str().ok_or("invalid output path")?;
+            let compressed = compress_graph::compress_unitigs(&graph, &args.reads_fq, out_str);
+            println!("Assembly produced {} unitigs (written to {})", compressed.unitigs.len(), out_str);
         }
-        let small_comp_count = comp_nodes_to_remove.len();
-        for node_id in comp_nodes_to_remove.iter() {
-            graph.nodes.remove(node_id.as_str());
-            // also remove RC oriented node if present
-            if node_id.ends_with('+') {
-                let rc = node_id[..node_id.len()-1].to_string() + "-";
-                graph.nodes.remove(rc.as_str());
-            } else if node_id.ends_with('-') {
-                let rc = node_id[..node_id.len()-1].to_string() + "+";
-                graph.nodes.remove(rc.as_str());
-            }
-        }
-        println!("Removed {} oriented nodes from small components (<2)", small_comp_count);
-
-        // 4) Tip trimming
-        let node_count_before_trimming = graph.nodes.len();
-        tip_trimming::trim_tips(&mut graph, max_tip_len);
-        let node_count_after_trimming = graph.nodes.len();
-        println!("Removed {} nodes by tip trimming", node_count_before_trimming - node_count_after_trimming);
-
-        // 5) Iteration stats
-        let (_indegree_dist, outdegree_dist) = graph_analysis::analyze_degrees(&graph);
-        let high_branch = outdegree_dist.iter().filter(|(deg, _)| **deg > 1).map(|(_, count)| *count).sum::<usize>();
-        let very_high = outdegree_dist.iter().filter(|(deg, _)| **deg >= 3).map(|(_, count)| *count).sum::<usize>();
-        let current_edges: usize = graph.nodes.values().map(|n| n.edges.len()).sum();
-
-        println!("\nIteration {} stats:", iteration);
-        println!("Current nodes: {}", graph.nodes.len());
-        println!("Current edges: {}", current_edges);
-        println!("Node/edge ratio: {:.4}", graph.nodes.len() as f64 / current_edges as f64);
-        println!("Nodes with out-degree > 1: {}", high_branch);
-        println!("Nodes with out-degree >= 3: {}", very_high);
-
-        iteration += 1;
-
-        println!("\n");
-        println!("\n----------------------------------------");
-        println!("\n");
     }
 
-    // weakly connected components after cleanup
-    let final_components = graph_analysis::weakly_connected_components(&graph);
-    println!("Final weakly connected components: {}", final_components.len());
-
-    for (component_id, component) in final_components.iter().enumerate() {
-        println!("Component {}: {} nodes", component_id + 1, component.len());
-    }
-
-    // write graph to DOT file for visualization
-    graph.write_dot("overlap_before_heuristic.dot").unwrap();
-
-    // heuristic simplification: remove low identity edges from nodes with multiple out-edges
-    println!("Applying heuristic simplification: removing weak edges...");
-    heuristic_simplification::remove_weak(&mut graph);
-
-    // weakly connected components after cleanup
-    let final_components = graph_analysis::weakly_connected_components(&graph);
-    println!("Final weakly connected components: {}", final_components.len());
-
-    for (component_id, component) in final_components.iter().enumerate() {
-        println!("Component {}: {} nodes", component_id + 1, component.len());
-    }
-
-    // debug pause
-    println!("Press Enter to continue...");
-    let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
-
-    // write graph to DOT file for visualization
-    //graph.write_dot("overlap_after_heuristic.dot").unwrap();
-
-    // graph compression into unitigs
-    println!("Compressing graph into unitigs...");
-    let compressed_graph = compress_graph::compress_unitigs(&graph, reads_fq, out_fasta);
-    println!("Compressed graph has {} unitigs", compressed_graph.unitigs.len());
-
-    // debug pause
-    println!("Press Enter to continue...");
-    let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
-    
-    // unitig length stats
-    let mut unitig_lengths: Vec<usize> = compressed_graph.unitigs.iter().map(|u| u.members.len()).collect();
-    unitig_lengths.sort_unstable();
-    let total_unitigs = unitig_lengths.len();
-    let total_length: usize = unitig_lengths.iter().sum();
-    let N50 = {
-        let mut cum_length = 0;
-        let half_length = total_length / 2;
-        let mut n50 = 0;
-        for &len in unitig_lengths.iter().rev() {
-            cum_length += len;
-            if cum_length >= half_length {
-                n50 = len;
-                break;
-            }
-        }
-        n50
-    };
-    println!("Unitig length stats:");
-    println!("Total unitigs: {}", total_unitigs);
-    println!("Total length (in nodes): {}", total_length);
-    println!("N50 unitig length (in nodes): {}", N50);
-
-    // largest unitig members
-    if let Some(largest_unitig) = compressed_graph.unitigs.iter().max_by_key(|u| u.members.len()) {
-        println!("Largest unitig ID: {}, length (in nodes): {}", largest_unitig.id, largest_unitig.members.len());
-    }
-
-    // Final stats
-    println!("\n=== Final Graph Stats ===");
-    let final_node_count = graph.nodes.len();
-    let final_edge_count: usize = graph.nodes.values().map(|n| n.edges.len()).sum();
-    let big_outdegree_count = graph.nodes.values().filter(|n| n.edges.len() > 1).count();
-    println!("Final graph nodes: {}", final_node_count);
-    println!("Final graph edges: {}", final_edge_count);
-    println!("Nodes with out-degree > 1: {}", big_outdegree_count);
-    println!("Final node to edge ratio: {:.4}", final_node_count as f64 / final_edge_count as f64);
-
-
+    Ok(())
 }

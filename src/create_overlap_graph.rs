@@ -158,8 +158,25 @@ impl OverlapGraph {
     }
 }
 
+pub struct AlignmentFilteringOutput {
+    pub overlaps: HashMap<(usize, usize), Overlap>,
+}
+
+impl AlignmentFilteringOutput {
+
+    // serialize the overlaps
+    pub fn serialize_overlaps(&self, path: &str,) -> Result<(), Box<dyn std::error::Error>> {
+        let file = File::create(path)?;
+        let writer = BufWriter::new(file);
+        bincode::serialize_into(writer, &self.overlaps)?;
+        
+        Ok(())
+
+    }
+}
+
 /// Build overlap graph from overlaps
-pub fn create_overlap_graph(overlaps: HashMap<(usize, usize), Overlap>) -> Result<OverlapGraph, io::Error> {
+pub fn run_create_overlap_graph(overlaps: HashMap<(usize, usize), Overlap>) -> Result<OverlapGraph, io::Error> {
 
     println!("=== OVERLAP GRAPH CREATION ===");
     let mut g = OverlapGraph::new();

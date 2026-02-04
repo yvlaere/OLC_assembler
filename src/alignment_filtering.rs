@@ -100,13 +100,14 @@ pub struct AlignmentFilteringOutput {
 impl AlignmentFilteringOutput {
 
     // serialize the overlaps
-    fn serialize_overlaps(&self, path: &str,) -> Result<()> {
+    pub fn serialize_overlaps(&self, path: &str,) -> Result<(), Box<dyn std::error::Error>> {
         let file = File::create(path)?;
         let writer = BufWriter::new(file);
         bincode::serialize_into(writer, &self.overlaps)?;
+        
         Ok(())
+
     }
-    self.serialize_overlaps("overlaps.bin").expect("Failed to save overlaps.");
 }
 
 /// Classify alignment and update contained reads set
@@ -264,7 +265,7 @@ fn classify_alignment(r: &Alignment, query_id: usize, target_id: usize, overlaps
 }
 
 /// Filter PAF file based on overlap quality criteria
-pub fn run_alignment_filtering(paf_in: &str, min_overlap_length: &u32, min_overlap_count: &u32, min_percent_identity: &f32, overhang_ratio: &f64) -> AlignmentFilteringOutput {
+pub fn run_alignment_filtering(paf_in: &str, min_overlap_length: &u32, min_overlap_count: &u32, min_percent_identity: &f32, overhang_ratio: &f32) -> Result<AlignmentFilteringOutput, Box<dyn std::error::Error>> {
 
     // Setup data structures
     // read name to read id mapping
@@ -426,7 +427,7 @@ pub fn run_alignment_filtering(paf_in: &str, min_overlap_length: &u32, min_overl
     // classify alignments and update contained reads set
     for ((query_id, target_id), alignment) in &alignments {
         //let alignment_type = match classify_alignment(alignment, *query_id, *target_id, &mut overlaps, *max_overhang, *overhang_ratio, &reads, min_overlap_length) {
-        let alignment_type = match classify_alignment(alignment, *query_id, *target_id, &mut overlaps, 4000000000, *overhang_ratio, &reads, *min_overlap_length) {
+        let alignment_type = match classify_alignment(alignment, *query_id, *target_id, &mut overlaps, 4000000000, (*overhang_ratio) as f64, &reads, *min_overlap_length) {
             AlignmentType::Filtered => {
                 continue; // skip filtered alignments
             }
@@ -468,5 +469,5 @@ pub fn run_alignment_filtering(paf_in: &str, min_overlap_length: &u32, min_overl
     println!("=== PHASE 3 FINISHED ===");
     println!("=== ALIGNMENT FILTERING FINISHED ===");
 
-    return AlignmentFilteringOutput { overlaps };
+    Ok(AlignmentFilteringOutput { overlaps })
 }

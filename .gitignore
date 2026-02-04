@@ -1,16 +1,3 @@
 /target
-test.paf
-test_2.paf
-pacbio_intermediary.paf
-overlaps.bin
-intermediary.paf
 /test_data
-GCA_046599155.1_ASM4659915v1_genomic.fna
-/comparison
-largest_contig.fna
-out.fna
-/new_comparison
-test_assembly.fna
-test.fna
-test_2.fna
-test_3.fna
+/test_out

@@ -1,5 +1,6 @@
 pub struct AlignmentFilteringConfig {
     pub input_paf: String,
+    pub output_overlaps: String,
     pub min_overlap_length: u32,
     pub min_overlap_count: u32,
     pub min_percent_identity: f32,
@@ -7,7 +8,7 @@ pub struct AlignmentFilteringConfig {
 }
 
 pub struct CreateOverlapGraphConfig {
-    pub overlap_binary: String,
+    pub overlaps: String,
 }
 
 pub struct SimplifyOverlapGraphConfig {
