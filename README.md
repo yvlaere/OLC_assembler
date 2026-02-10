@@ -17,16 +17,29 @@ cargo build --release
 To run the full assembly workflow end to end:
 
 ```
-Ilesta assemble
-  --input-paf raw_overlaps.paf 
-  --min-overlap-length
-  --min-overlap-count
-  --min-percent-identity
-  --overhang-ratio
-  --overlap-binary
-  --reads-fq
-  --output-prefix
-  --output-dir
+Usage: Ilesta assemble [OPTIONS] --reads-fq <READS_FQ>
+
+Options:
+  -f, --input-paf <INPUT_PAF>
+          Input PAF file (optional if --overlaps is provided)
+  -l, --min-overlap-length <MIN_OVERLAP_LENGTH>
+          Minimum overlap length [default: 2000]
+  -c, --min-overlap-count <MIN_OVERLAP_COUNT>
+          Minimum overlap count [default: 3]
+  -i, --min-percent-identity <MIN_PERCENT_IDENTITY>
+          Minimum percent identity [default: 5]
+      --overhang-ratio <OVERHANG_RATIO>
+          Overhang ratio [default: 0.8]
+      --overlaps <OVERLAPS>
+          Pre-computed overlaps binary file (optional, if provided skips alignment filtering)
+  -r, --reads-fq <READS_FQ>
+          Input reads in FASTQ format
+  -p, --output-prefix <OUTPUT_PREFIX>
+          Output prefix [default: unitigs]
+  -o, --output-dir <OUTPUT_DIR>
+          Output directory [default: .]
+  -h, --help
+          Print help
 ```
 
 ## Development
