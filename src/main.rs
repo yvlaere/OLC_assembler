@@ -59,6 +59,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let out_str = out_path.to_str().ok_or("invalid output path")?;
             let compressed = compress_graph::compress_unitigs(&graph, &config.reads_fq, out_str);
             println!("Compressed graph has {} unitigs, wrote to {}", compressed.unitigs.len(), out_str);
+            let gfa_path = std::path::Path::new(&config.output_dir).join(format!("{}.gfa", config.output_prefix));
+            let gfa_str = gfa_path.to_str().ok_or("invalid output path")?;
+            compressed.write_gfa(gfa_str)?;
+            println!("Wrote GFA to {}", gfa_str);
         }
         Commands::Assemble(args) => {
             let config: crate::configs::AssembleConfig = args.into();
@@ -166,6 +170,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let out_str = out_path.to_str().ok_or("invalid output path")?;
             let compressed = compress_graph::compress_unitigs(&graph, &args.reads_fq, out_str);
             println!("Assembly produced {} unitigs (written to {})", compressed.unitigs.len(), out_str);
+            let gfa_path = out_dir.join(format!("{}.gfa", args.output_prefix));
+            let gfa_str = gfa_path.to_str().ok_or("invalid output path")?;
+            compressed.write_gfa(gfa_str)?;
+            println!("Wrote GFA to {}", gfa_str);
         }
     }
 
