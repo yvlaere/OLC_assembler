@@ -114,9 +114,30 @@ impl From<&CreateUnitigsArgs> for crate::configs::UnitigConfig {
 #[derive(Args)]
 pub struct AssembleArgs {
 
-    // Alignment filtering parameters
-    #[command(flatten)]
-    pub alignment_filtering: AlignmentFilteringArgs,
+    // Alignment filtering parameters (optional if --overlaps is provided)
+    /// Input PAF file (optional if --overlaps is provided)
+    #[arg(short = 'f', long)]
+    pub input_paf: Option<String>,
+
+    /// Minimum overlap length
+    #[arg(short = 'l', long, default_value_t = 2000)]
+    pub min_overlap_length: u32,
+
+    /// Minimum overlap count
+    #[arg(short = 'c', long, default_value_t = 3)]
+    pub min_overlap_count: u32,
+
+    /// Minimum percent identity
+    #[arg(short = 'i', long, default_value_t = 5.0)]
+    pub min_percent_identity: f32,
+
+    /// Overhang ratio
+    #[arg(long, default_value_t = 0.8)]
+    pub overhang_ratio: f32,
+
+    /// Pre-computed overlaps binary file (optional, if provided skips alignment filtering)
+    #[arg(long)]
+    pub overlaps: Option<String>,
 
     /// Input reads in FASTQ format
     #[arg(short = 'r', long)]
@@ -129,4 +150,20 @@ pub struct AssembleArgs {
     /// Output directory
     #[arg(short = 'o', long, default_value = ".")]
     pub output_dir: String,
+}
+
+impl From<&AssembleArgs> for crate::configs::AssembleConfig {
+    fn from(args: &AssembleArgs) -> Self {
+        Self {
+            input_paf: args.input_paf.clone(),
+            min_overlap_length: args.min_overlap_length,
+            min_overlap_count: args.min_overlap_count,
+            min_percent_identity: args.min_percent_identity,
+            overhang_ratio: args.overhang_ratio,
+            overlaps: args.overlaps.clone(),
+            reads_fq: args.reads_fq.clone(),
+            output_prefix: args.output_prefix.clone(),
+            output_dir: args.output_dir.clone(),
+        }
+    }
 }

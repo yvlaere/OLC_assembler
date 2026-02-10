@@ -22,3 +22,15 @@ pub struct UnitigConfig {
     pub output_prefix: String,
     pub output_dir: String,
 }
+
+pub struct AssembleConfig {
+    pub input_paf: Option<String>,
+    pub min_overlap_length: u32,
+    pub min_overlap_count: u32,
+    pub min_percent_identity: f32,
+    pub overhang_ratio: f32,
+    pub overlaps: Option<String>,
+    pub reads_fq: String,
+    pub output_prefix: String,
+    pub output_dir: String,
+}

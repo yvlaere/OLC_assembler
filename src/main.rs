@@ -61,29 +61,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Compressed graph has {} unitigs, wrote to {}", compressed.unitigs.len(), out_str);
         }
         Commands::Assemble(args) => {
-            // run alignment filtering
-            let alignment_cfg: crate::configs::AlignmentFilteringConfig = (&args.alignment_filtering).into();
+            let config: crate::configs::AssembleConfig = args.into();
 
             // ensure output directory exists
-            let out_dir = std::path::Path::new(&args.output_dir);
+            let out_dir = std::path::Path::new(&config.output_dir);
             std::fs::create_dir_all(out_dir)?;
 
-            // write overlaps into the output directory using the chosen prefix
-            let overlaps_path = out_dir.join(format!("{}.overlaps.bin", args.output_prefix));
-            let overlaps_path_str = overlaps_path.to_str().ok_or("invalid output path")?;
+            // Determine the path to overlaps: either use provided overlaps or run alignment filtering
+            let overlaps_path_str = if let Some(ref overlaps_file) = config.overlaps {
+                // Use provided overlaps
+                println!("Using provided overlaps from {}", overlaps_file);
+                overlaps_file.clone()
+            } else {
+                // Run alignment filtering
+                let input_paf = config.input_paf.as_ref().ok_or("Either --input-paf or --overlaps must be provided")?;
+                
+                // write overlaps into the output directory using the chosen prefix
+                let overlaps_path = out_dir.join(format!("{}.overlaps.bin", config.output_prefix));
+                let overlaps_path_str = overlaps_path.to_str().ok_or("invalid output path")?.to_string();
 
-            let out = alignment_filtering::run_alignment_filtering(
-                &alignment_cfg.input_paf,
-                &alignment_cfg.min_overlap_length,
-                &alignment_cfg.min_overlap_count,
-                &alignment_cfg.min_percent_identity,
-                &alignment_cfg.overhang_ratio,
-            )?;
-            out.serialize_overlaps(overlaps_path_str)?;
-            println!("Wrote overlaps to {}", overlaps_path_str);
+                let out = alignment_filtering::run_alignment_filtering(
+                    input_paf,
+                    &config.min_overlap_length,
+                    &config.min_overlap_count,
+                    &config.min_percent_identity,
+                    &config.overhang_ratio,
+                )?;
+                out.serialize_overlaps(&overlaps_path_str)?;
+                println!("Wrote overlaps to {}", overlaps_path_str);
+                overlaps_path_str
+            };
 
             // load overlaps, build graph
-            let file = File::open(overlaps_path_str)?;
+            let file = File::open(&overlaps_path_str)?;
             let reader = BufReader::new(file);
             let overlaps: HashMap<(usize, usize), Overlap> = bincode::deserialize_from(reader)?;
             let mut graph = create_overlap_graph::run_create_overlap_graph(overlaps)?;
