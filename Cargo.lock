@@ -3,7 +3,7 @@
 version = 4
 
 [[package]]
-name = "OLC_assembler"
+name = "Ilesta"
 version = "0.1.0"
 dependencies = [
  "bincode",

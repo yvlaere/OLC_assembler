@@ -1,3 +1,4 @@
 /target
 /test_data
-/test_out
+/run_test
+overlaps.bin
