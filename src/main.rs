@@ -9,6 +9,7 @@ mod graph_analysis;
 mod compress_graph;
 mod utils;
 mod heuristic_simplification;
+mod unitig_processing;
 
 use std::io;
 use clap::Parser;
@@ -57,7 +58,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let out_path = std::path::Path::new(&config.output_dir).join(format!("{}.fa", config.output_prefix));
             let out_str = out_path.to_str().ok_or("invalid output path")?;
-            let compressed = compress_graph::compress_unitigs(&graph, &config.reads_fq, out_str);
+            let mut compressed = compress_graph::compress_unitigs(&graph, &config.reads_fq, out_str);
             println!("Compressed graph has {} unitigs, wrote to {}", compressed.unitigs.len(), out_str);
             let gfa_path = std::path::Path::new(&config.output_dir).join(format!("{}.gfa", config.output_prefix));
             let gfa_str = gfa_path.to_str().ok_or("invalid output path")?;
@@ -157,8 +158,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             // heuristic simplification
-            println!("Applying heuristic simplification: removing weak edges...");
-            heuristic_simplification::remove_weak(&mut graph);
+            //println!("Applying heuristic simplification: removing weak edges...");
+            //heuristic_simplification::remove_weak(&mut graph);
 
             // write graph snapshot into output dir
             let dot_path = out_dir.join("overlap_before_compression.dot");
@@ -168,8 +169,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // compress into unitigs into output dir
             let out_path = out_dir.join(format!("{}.fa", args.output_prefix));
             let out_str = out_path.to_str().ok_or("invalid output path")?;
-            let compressed = compress_graph::compress_unitigs(&graph, &args.reads_fq, out_str);
+            let mut compressed = compress_graph::compress_unitigs(&graph, &args.reads_fq, out_str);
             println!("Assembly produced {} unitigs (written to {})", compressed.unitigs.len(), out_str);
+            
+            // Process unitigs: detect and remove RC duplicates
+            let unitig_seqs: HashMap<usize, String> = compressed.unitigs.iter()
+                .map(|u| (u.id, u.fasta_seq.as_ref().unwrap_or(&String::new()).clone())).collect();
+            //let rc_dups = unitig_processing::detect_reverse_complement_duplicates(&compressed, &unitig_seqs);
+            //if !rc_dups.is_empty() {
+            //    unitig_processing::remove_rc_duplicates(&mut compressed, &rc_dups);
+            //}
+            
+            // Find longest circular path
+            if let Some(circular_path) = unitig_processing::find_longest_circular_path(&compressed) {
+                println!("Found circular path of length {} with {} unitigs", circular_path.total_length, circular_path.unitigs.len());
+                if let Some(circular_seq) = unitig_processing::path_to_fasta(&circular_path, &compressed, &unitig_seqs) {
+                    let circ_path = out_dir.join(format!("{}.circular.fa", args.output_prefix));
+                    let circ_str = circ_path.to_str().ok_or("invalid output path")?;
+                    std::fs::write(circ_str, format!(">circular_{} len={}\n{}\n", args.output_prefix, circular_seq.len(), circular_seq))?;
+                    println!("Wrote circular path to {}", circ_str);
+                }
+            } else {
+                println!("No circular path found in unitig graph");
+            }
+            
             let gfa_path = out_dir.join(format!("{}.gfa", args.output_prefix));
             let gfa_str = gfa_path.to_str().ok_or("invalid output path")?;
             compressed.write_gfa(gfa_str)?;
