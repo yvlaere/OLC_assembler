@@ -156,18 +156,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             }
 
+            // write graph snapshot into output dir
+            let dot_path = out_dir.join("before_heuristic.dot");
+            let dot_str = dot_path.to_str().ok_or("invalid output path")?;
+            graph.write_dot(dot_str)?;
+
             // heuristic simplification
             //println!("Applying heuristic simplification: removing weak edges...");
             //heuristic_simplification::remove_weak(&mut graph);
 
-            // write graph snapshot into output dir
-            //let dot_path = out_dir.join("before_heuristic.dot");
-            //let dot_str = dot_path.to_str().ok_or("invalid output path")?;
-            //graph.write_dot(dot_str)?;
-
             //heuristic simplification: remove short edges
             //println!("Applying heuristic simplification: removing short edges...");
             //heuristic_simplification::remove_short_edges(&mut graph, 0.8);
+
+            //heuristic simplification: cut internal
+            println!("Applying heuristic simplification: cutting internal edges...");
+            heuristic_simplification::cut_internal(&mut graph, 1);
+
+            //heuristic simplification: cut small bi-loops
+            //println!("Applying heuristic simplification: cutting small bi-loops...");
+            //heuristic_simplification::cut_biloop(&mut graph, 10);
 
             // write graph snapshot into output dir
             let dot_path = out_dir.join("after_heuristic.dot");
