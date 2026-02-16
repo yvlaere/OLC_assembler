@@ -110,7 +110,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let max_tip_len = 4usize;
             let fuzz = 10u32;
 
-            for iteration in 1..=10 {
+            for iteration in 1..=2 {
                 println!("\n=== Cleanup Iteration {} ===", iteration);
 
                 // transitive edge reduction
@@ -118,6 +118,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 transitive_edge_reduction::reduce_transitive_edges(&mut graph, fuzz);
                 let edges_after: usize = graph.nodes.values().map(|n| n.edges.len()).sum();
                 println!("Removed {} edges with transitive edge reduction", edges_before.saturating_sub(edges_after));
+
+                // heuristic simplification: remove multi-edges
+                println!("Applying heuristic simplification: removing multi-edges...");
+                let n_multi = heuristic_simplification::remove_multi_edges(&mut graph);
+                println!("Removed {} multi-edges", n_multi);
+
+                graph_analysis::check_synchronization(&graph);
+                
+                // ask for input to continue to slow down
+                println!("Press Enter to continue...");
+                let mut input = String::new();
+                std::io::stdin().read_line(&mut input)?;
+
+                //heuristic simplification: remove short edges
+                println!("Applying heuristic simplification: removing short edges...");
+                heuristic_simplification::remove_short_edges(&mut graph, 0.8);
 
                 // bubble removal
                 let node_count_before = graph.nodes.len();
@@ -161,6 +177,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let dot_str = dot_path.to_str().ok_or("invalid output path")?;
             graph.write_dot(dot_str)?;
 
+            // heuristic simplification: remove multi-edges
+            //println!("Applying heuristic simplification: removing multi-edges...");
+            //let n_multi = heuristic_simplification::remove_multi_edges(&mut graph);
+            //println!("Removed {} multi-edges", n_multi);
+
+            // ask for input to continue to slow down
+            println!("Press Enter to continue...");
+            let mut input = String::new();
+            std::io::stdin().read_line(&mut input)?;
+
             // heuristic simplification
             //println!("Applying heuristic simplification: removing weak edges...");
             //heuristic_simplification::remove_weak(&mut graph);
@@ -170,8 +196,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             //heuristic_simplification::remove_short_edges(&mut graph, 0.8);
 
             //heuristic simplification: cut internal
-            println!("Applying heuristic simplification: cutting internal edges...");
-            heuristic_simplification::cut_internal(&mut graph, 1);
+            //println!("Applying heuristic simplification: cutting internal edges...");
+            //heuristic_simplification::cut_internal(&mut graph, 1);
 
             //heuristic simplification: cut small bi-loops
             //println!("Applying heuristic simplification: cutting small bi-loops...");

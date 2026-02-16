@@ -236,6 +236,79 @@ pub fn cut_internal(graph: &mut OverlapGraph, max_ext: usize) {
     }
 }
 
+/// Delete multi-arcs: when a node has multiple arcs to the same target,
+/// keep the best (largest overlap_len, then highest identity) and remove the others.
+pub fn remove_multi_edges(graph: &mut OverlapGraph) -> usize {
+    let mut n_multi = 0usize;
+
+    // snapshot of node ids
+    let keys: Vec<String> = graph.nodes.keys().cloned().collect();
+
+    for src in keys {
+        // snapshot edges for inspection
+        let edges_snapshot = match graph.nodes.get(&src) {
+            Some(n) => n.edges.clone(),
+            None => continue,
+        };
+        if edges_snapshot.len() < 2 { continue; }
+
+        use std::collections::HashMap;
+        // count occurrences per target and select best edge per target
+        let mut counts: HashMap<String, usize> = HashMap::new();
+        let mut best_idx: HashMap<String, usize> = HashMap::new();
+        for (i, e) in edges_snapshot.iter().enumerate() {
+            *counts.entry(e.target_id.clone()).or_insert(0) += 1;
+            match best_idx.get(&e.target_id) {
+                Some(&bi) => {
+                    let be = &edges_snapshot[bi];
+                    // prefer larger overlap_len, break ties by identity
+                    if e.overlap_len > be.overlap_len || (e.overlap_len == be.overlap_len && e.identity > be.identity) {
+                        best_idx.insert(e.target_id.clone(), i);
+                    }
+                }
+                None => { best_idx.insert(e.target_id.clone(), i); }
+            }
+        }
+
+        // if no duplicates, skip
+        let total_edges = edges_snapshot.len();
+        let unique_targets = best_idx.len();
+        if total_edges == unique_targets { continue; }
+
+        // build new edges vector in deterministic order (sort by target id)
+        let mut chosen: Vec<(String, crate::create_overlap_graph::EdgeInfo)> = best_idx.into_iter().map(|(t,i)| (t, edges_snapshot[i].clone())).collect();
+        chosen.sort_by(|a,b| a.0.cmp(&b.0));
+        let new_edges: Vec<crate::create_overlap_graph::EdgeInfo> = chosen.into_iter().map(|(_t,e)| e).collect();
+
+        // determine targets that had duplicates and how many removed
+        let mut removed_targets: Vec<String> = Vec::new();
+        for (t, cnt) in counts.into_iter() {
+            if cnt > 1 {
+                removed_targets.push(t.clone());
+                n_multi += cnt - 1;
+            }
+        }
+
+        // apply new edges (replace atomically)
+        if let Some(node_mut) = graph.nodes.get_mut(&src) {
+            node_mut.edges = new_edges;
+        }
+
+        // remove reverse edges from targets (once per target)
+        for tgt in removed_targets {
+            if let Some(tnode) = graph.nodes.get_mut(&tgt) {
+                tnode.remove_edge(&src);
+            }
+        }
+    }
+
+    if n_multi > 0 {
+        eprintln!("[heuristic_simplification::remove_multi_arcs] removed {} multi-arcs", n_multi);
+    }
+
+    n_multi
+}
+
 /// Remove low identity from nodes with multiple outgoing edges
 pub fn remove_weak(graph: &mut OverlapGraph,) {
     
