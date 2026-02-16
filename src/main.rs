@@ -125,7 +125,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("Removed {} multi-edges", n_multi);
 
                 graph_analysis::check_synchronization(&graph);
-                
+
                 // ask for input to continue to slow down
                 println!("Press Enter to continue...");
                 let mut input = String::new();
