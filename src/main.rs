@@ -105,7 +105,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Graph simplification: iterative cleanup
             graph_analysis::check_synchronization(&graph);
             println!("=== STARTING GRAPH CLEANUP ===");
-            let max_bubble_len = 8usize;
+            let max_bubble_len = 100usize;
             let min_support_ratio = 1.1f64;
             let max_tip_len = 4usize;
             let fuzz = 10u32;
@@ -157,11 +157,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             // heuristic simplification
-            println!("Applying heuristic simplification: removing weak edges...");
-            heuristic_simplification::remove_weak(&mut graph);
+            //println!("Applying heuristic simplification: removing weak edges...");
+            //heuristic_simplification::remove_weak(&mut graph);
 
             // write graph snapshot into output dir
-            let dot_path = out_dir.join("overlap_before_compression.dot");
+            //let dot_path = out_dir.join("before_heuristic.dot");
+            //let dot_str = dot_path.to_str().ok_or("invalid output path")?;
+            //graph.write_dot(dot_str)?;
+
+            //heuristic simplification: remove short edges
+            //println!("Applying heuristic simplification: removing short edges...");
+            //heuristic_simplification::remove_short_edges(&mut graph, 0.8);
+
+            // write graph snapshot into output dir
+            let dot_path = out_dir.join("after_heuristic.dot");
             let dot_str = dot_path.to_str().ok_or("invalid output path")?;
             graph.write_dot(dot_str)?;
 
