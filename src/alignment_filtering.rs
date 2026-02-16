@@ -341,7 +341,7 @@ pub fn run_alignment_filtering(paf_in: &str, min_overlap_length: &u32, min_overl
                     read_name2read_id.insert(record.target_name.clone(), id);
                     alignment_ids_per_read.push(HashSet::new());
                     // create new read object
-                    reads.push(Read {id, name: record.target_name.clone(), length: record.target_length, per_base_coverage: vec![0; record.target_length as usize], coverage_start: 0, coverage_end: record.query_length,});
+                    reads.push(Read {id, name: record.target_name.clone(), length: record.target_length, per_base_coverage: vec![0; record.target_length as usize], coverage_start: 0, coverage_end: record.target_length,});
                     id
                 }
             };
