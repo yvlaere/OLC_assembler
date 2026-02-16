@@ -327,12 +327,17 @@ pub fn unitig_sequence(unitig: &Unitig, graph: &crate::create_overlap_graph::Ove
         let seq = get_seq(&member.node_id)?;
         let edge_len_usize = *edge_len as usize;
 
-        if edge_len_usize > seq.len() {
-            return Err(format!("edge length ({}) larger than seq length ({}) for node {} to target {}", edge_len_usize, seq.len(), member.node_id, target_id));
-        }
+        if target_id.is_empty() {
+            // This is the last node, append the entire sequence
+            out.push_str(&seq);
+        } else {
+            if edge_len_usize > seq.len() {
+                return Err(format!("edge length ({}) larger than seq length ({}) for node {} to target {}", edge_len_usize, seq.len(), member.node_id, target_id));
+            }
 
-        // Append the non-overlapping prefix
-        out.push_str(&seq[..edge_len_usize]);
+            // Append the non-overlapping prefix
+            out.push_str(&seq[..edge_len_usize]);
+        }
     }
 
     Ok(out)
