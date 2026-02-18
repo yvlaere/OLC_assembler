@@ -5,7 +5,19 @@ Ilesta is a de novo genome assembler for long reads using the Overlapâ€“Layoutâ€
 
 ## Installation
 
-You can build Ilesta from source using Rust (recommended):
+Option 1: Precompiled binaries (recommended):
+
+```bash
+# Download the binary
+mkdir Ilesta; cd Ilesta
+wget https://github.com/yvlaere/Ilesta/releases/download/v0.1.0/ilesta-linux-x86_64
+chmod +x ilesta-linux-x86_64
+
+# Add Ilesta to your PATH (optional, for easy access):
+export PATH="$PWD:$PATH"
+```
+
+Option 2: Build from source (requires Rust 1.85.0 or above):
 
 ```bash
 # Build the release
@@ -16,8 +28,6 @@ cargo build --release
 # Add Ilesta to your PATH (optional, for easy access):
 export PATH="$PWD/target/release:$PATH"
 ```
-
-Or you can download the binary
 
 ## Usage
 
