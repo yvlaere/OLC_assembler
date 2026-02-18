@@ -8,13 +8,20 @@ Ilesta is a de novo genome assembler for long reads using the Overlapâ€“Layoutâ€
 You can build Ilesta from source using Rust (recommended):
 
 ```bash
+# Build the release
 git clone https://github.com/yvlaere/Ilesta.git
 cd Ilesta
 cargo build --release
-# The binary will be at target/release/Ilesta
+
+# Add Ilesta to your PATH (optional, for easy access):
+export PATH="$PWD/target/release:$PATH"
 ```
 
+Or you can download the binary
+
 ## Usage
+
+A demonstration of the usage of Ilesta using data from: https://doi.org/10.3389/fmicb.2025.1532788
 
 ```bash
 # Download data, using SRR28262566 as an example
@@ -36,11 +43,11 @@ This will produce:
 - `out_dir/unitigs.gfa` (assembly graph in GFA format)
 - `out_dir/graph.dot` (overlap graph visualization)
 
-
 ```bash
-# visualize the assembly graph (the two large swirls represent the complete bacterial genome, both orientations)
+# visualize the assembly graph
 Bandage image out_dir/unitigs.gfa out_dir/unitigs.png
 ```
+Ilesta sucesfully assembles the whole bacterial chromosome as one unitig. The two large swirls represent the complete bacterial chromosome, both orientations. The smaller unitigs are plasmids. 
 ![Bandage visualization](image.png)
 
 ```bash
