@@ -252,8 +252,8 @@ pub fn compress_unitigs(
     {
         let mut fasta_file = std::fs::File::create(fasta_path).unwrap();
         for unitig in unitigs.iter() {
-            let header = format!(">unitig_{} len={}\n", unitig.id, unitig.members.len());
             let seq = unitig.fasta_seq.as_ref().unwrap();
+            let header = format!(">unitig_{} len={}bp\n", unitig.id, seq.len());
             use std::io::Write;
             fasta_file.write_all(header.as_bytes()).unwrap();
             fasta_file.write_all(seq.as_bytes()).unwrap();

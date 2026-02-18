@@ -3,7 +3,7 @@ use clap::{Args, Parser, Subcommand};
 #[derive(Parser)]
 #[command(
     name = "Ilesta",
-    version = "0.0",
+    version = "1.0",
     about = "De novo genome assembly for long reads using the OLC approach"
 )]
 pub struct Cli {
