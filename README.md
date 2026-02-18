@@ -3,20 +3,52 @@
 Ilesta is a de novo genome assembler for long reads using the Overlap–Layout–Consensus (OLC) approach. It processes long-read sequencing data to detect overlaps, construct an overlap graph, and generate assembly unitigs.
 
 ## Installation
+Download the binary or build from source.
 
-Clone and build using Rust:
+## Usage
+
+```bash
+# Download data, using SRR28262566 as an example
+prefetch SRR28262566; cd SRR28262566
+fasterq-dump SRR28262566.sra
+
+# Filter reads
+seqkit seq -m 10000 -Q 10 SRR28262566.fastq -o filtered.fq
+
+# All-to-all alignment of the reads
+minimap2 -x ava-ont -t4 filtered.fq filtered.fq > overlapped_reads.paf
+
+# Start the assembly
+Ilesta assemble --input-paf overlapped_reads.paf --reads-fq filtered.fq -o out_dir
+```
+
+This will produce:
+- `out_dir/unitigs.fa` (unitigs in FASTA format)
+- `out_dir/unitigs.gfa` (assembly graph in GFA format)
+- `out_dir/graph.dot` (overlap graph visualization)
+
+```bash
+# visualize the assembly graph, the two large swirls represent the complete bacterial genome (both orientations)
+Bandage image unitigs.gfa unitigs.png
+![Bandage visualization](image.png)
+# visualize the overlap graph (not recommended, the graph is usually too large for convenient visualization)
+dot -Tpng graph.dot -o graph.png
+```
+
+## Command Line Usage
 
 ```
-git clone https://github.com/yvlaere/Ilesta.git
-cd Ilesta
-cargo build --release
-```
+Usage: Ilesta <COMMAND>
 
-## Quick Start
+Commands:
+  alignment-filtering  Alignment filtering
+  assemble             Full genome assembly pipeline
+  help                 Print this message or the help of the given subcommand(s)
 
-To run the full assembly workflow end to end:
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
 
-```
 Usage: Ilesta assemble [OPTIONS] --reads-fq <READS_FQ>
 
 Options:
@@ -38,9 +70,23 @@ Options:
           Output prefix [default: unitigs]
   -o, --output-dir <OUTPUT_DIR>
           Output directory [default: .]
+      --max-bubble-length <MAX_BUBBLE_LENGTH>
+          Maximum bubble length (used during bubble removal) [default: 100]
+      --min-support-ratio <MIN_SUPPORT_RATIO>
+          Minimum support ratio for bubble removal [default: 1.1]
+      --max-tip-len <MAX_TIP_LEN>
+          Maximum tip length for tip trimming [default: 4]
+      --fuzz <FUZZ>
+          Fuzz parameter for transitive edge reduction [default: 10]
+      --cleanup-iterations <CLEANUP_ITERATIONS>
+          Number of cleanup iterations to run [default: 2]
+      --short-edge-ratio <SHORT_EDGE_RATIO>
+          Short edge removal ratio (heuristic simplification) [default: 0.8]
   -h, --help
           Print help
 ```
+
+
 
 ## Development
 
