@@ -2,8 +2,17 @@
 
 Ilesta is a de novo genome assembler for long reads using the Overlap–Layout–Consensus (OLC) approach. It processes long-read sequencing data to detect overlaps, construct an overlap graph, and generate assembly unitigs.
 
+
 ## Installation
-Download the binary or build from source.
+
+You can build Ilesta from source using Rust (recommended):
+
+```bash
+git clone https://github.com/yvlaere/Ilesta.git
+cd Ilesta
+cargo build --release
+# The binary will be at target/release/Ilesta
+```
 
 ## Usage
 
@@ -27,12 +36,16 @@ This will produce:
 - `out_dir/unitigs.gfa` (assembly graph in GFA format)
 - `out_dir/graph.dot` (overlap graph visualization)
 
+
 ```bash
-# visualize the assembly graph, the two large swirls represent the complete bacterial genome (both orientations)
-Bandage image unitigs.gfa unitigs.png
+# visualize the assembly graph (the two large swirls represent the complete bacterial genome, both orientations)
+Bandage image out_dir/unitigs.gfa out_dir/unitigs.png
+```
 ![Bandage visualization](image.png)
+
+```bash
 # visualize the overlap graph (not recommended, the graph is usually too large for convenient visualization)
-dot -Tpng graph.dot -o graph.png
+dot -Tpng out_dir/graph.dot -o out_dir/graph.png
 ```
 
 ## Command Line Usage
