@@ -38,6 +38,8 @@ dot -Tpng graph.dot -o graph.png
 ## Command Line Usage
 
 ```
+Ilesta --help
+
 Usage: Ilesta <COMMAND>
 
 Commands:
@@ -48,6 +50,9 @@ Commands:
 Options:
   -h, --help     Print help
   -V, --version  Print version
+```
+```
+Ilesta assemble --help
 
 Usage: Ilesta assemble [OPTIONS] --reads-fq <READS_FQ>
 
@@ -85,8 +90,6 @@ Options:
   -h, --help
           Print help
 ```
-
-
 
 ## Development
 
