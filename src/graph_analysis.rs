@@ -1,18 +1,21 @@
-use std::collections::{HashMap, HashSet};
 use crate::create_overlap_graph::OverlapGraph;
 use crate::utils;
+use std::collections::{HashMap, HashSet};
 
 /// Check if the bigraph is synchronized:
 /// 1. Every node has a reverse complement.
 /// 2. Ingoing edges of every node correspond to outgoing edges of its reverse complement.
 pub fn check_synchronization(g: &OverlapGraph) {
     for n in g.nodes.keys() {
-
         // compute reverse complement node
         let n_rc = utils::rc_node(n);
 
         // check that the reverse complement exists
-        assert!(g.nodes.contains_key(&n_rc), "Reverse complement not found for {}. The bigraph is not synchronized.", n);
+        assert!(
+            g.nodes.contains_key(&n_rc),
+            "Reverse complement not found for {}. The bigraph is not synchronized.",
+            n
+        );
 
         // check that every outgoing edge has a counterpart in the reverse complement node
         if let Some(node) = g.nodes.get(n) {
@@ -23,10 +26,16 @@ pub fn check_synchronization(g: &OverlapGraph) {
                 // get the reverse complement node for t_rc
                 if let Some(t_rc_node) = g.nodes.get(&t_rc) {
                     // Check if there's a matching edge from t_rc to n_rc
-                    assert!(t_rc_node.edges.iter().any(|e| e.target_id == n_rc), "Corresponding edge not found for {}. The bigraph is not synchronized.", n);
-                } 
-                else {
-                    panic!("Reverse complement node {} missing for target {}. The bigraph is not synchronized.", t_rc, t);
+                    assert!(
+                        t_rc_node.edges.iter().any(|e| e.target_id == n_rc),
+                        "Corresponding edge not found for {}. The bigraph is not synchronized.",
+                        n
+                    );
+                } else {
+                    panic!(
+                        "Reverse complement node {} missing for target {}. The bigraph is not synchronized.",
+                        t_rc, t
+                    );
                 }
             }
         }
@@ -34,8 +43,7 @@ pub fn check_synchronization(g: &OverlapGraph) {
 }
 
 /// Find weakly connected components ("clustered reads") of the graph.
-pub fn weakly_connected_components(graph: &OverlapGraph,) -> Vec<Vec<String>> {
-    
+pub fn weakly_connected_components(graph: &OverlapGraph) -> Vec<Vec<String>> {
     // Build an undirected adjacency list
     // Because it is undirected, we can move through both incoming and outgoing edges, meaning we can reach all nodes in a component.
     let mut adjacency_list: HashMap<String, Vec<String>> = HashMap::new();
@@ -50,8 +58,14 @@ pub fn weakly_connected_components(graph: &OverlapGraph,) -> Vec<Vec<String>> {
         // Each edge is stored as EdgeInfo
         for e in &node.edges {
             let target_id = &e.target_id;
-            adjacency_list.entry(source_id.clone()).or_default().push(target_id.clone());
-            adjacency_list.entry(target_id.clone()).or_default().push(source_id.clone());
+            adjacency_list
+                .entry(source_id.clone())
+                .or_default()
+                .push(target_id.clone());
+            adjacency_list
+                .entry(target_id.clone())
+                .or_default()
+                .push(source_id.clone());
         }
     }
 
@@ -60,7 +74,6 @@ pub fn weakly_connected_components(graph: &OverlapGraph,) -> Vec<Vec<String>> {
     let mut components: Vec<Vec<String>> = Vec::new();
 
     for start in adjacency_list.keys() {
-
         // check if already visited
         if visited.contains(start) {
             continue;
@@ -103,7 +116,7 @@ pub fn component_sizes_sorted(graph: &OverlapGraph) -> Vec<usize> {
 pub fn analyze_degrees(graph: &OverlapGraph) -> (HashMap<usize, usize>, HashMap<usize, usize>) {
     let mut indegree_dist: HashMap<usize, usize> = HashMap::new();
     let mut outdegree_dist: HashMap<usize, usize> = HashMap::new();
-    
+
     // Count indegrees first
     let mut indegrees: HashMap<String, usize> = HashMap::new();
     for node in graph.nodes.values() {
@@ -111,16 +124,16 @@ pub fn analyze_degrees(graph: &OverlapGraph) -> (HashMap<usize, usize>, HashMap<
             *indegrees.entry(e.target_id.clone()).or_default() += 1;
         }
     }
-    
+
     // Now collect distributions
     for node_id in graph.nodes.keys() {
         let in_deg = indegrees.get(node_id).copied().unwrap_or(0);
         let out_deg = graph.nodes.get(node_id).map(|n| n.edges.len()).unwrap_or(0);
-        
+
         *indegree_dist.entry(in_deg).or_default() += 1;
         *outdegree_dist.entry(out_deg).or_default() += 1;
     }
-    
+
     (indegree_dist, outdegree_dist)
 }
 
@@ -146,7 +159,11 @@ pub fn compressible_node_stats(graph: &OverlapGraph) -> (usize, usize, f64) {
             compressible += 1;
         }
     }
-    let frac = if total == 0 { 0.0 } else { compressible as f64 / total as f64 };
+    let frac = if total == 0 {
+        0.0
+    } else {
+        compressible as f64 / total as f64
+    };
     (compressible, total, frac)
 }
 
@@ -175,16 +192,22 @@ pub fn tip_length_distribution(graph: &OverlapGraph, max_walk: usize) -> Vec<usi
         let mut steps = 0usize;
         let mut visited_local: HashSet<String> = HashSet::new();
         while steps < max_walk {
-            if visited_local.contains(&cur) { break; } // cycle safety
+            if visited_local.contains(&cur) {
+                break;
+            } // cycle safety
             visited_local.insert(cur.clone());
 
             let node = match graph.nodes.get(&cur) {
                 Some(n) => n,
                 None => break,
             };
-            if node.edges.is_empty() { break; }
+            if node.edges.is_empty() {
+                break;
+            }
             // if more than one outgoing edge we stop counting the linear extension
-            if node.edges.len() != 1 { break; }
+            if node.edges.len() != 1 {
+                break;
+            }
 
             // move to next node
             let next = node.edges[0].target_id.clone();

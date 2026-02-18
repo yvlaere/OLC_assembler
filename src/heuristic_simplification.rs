@@ -3,13 +3,15 @@ use crate::create_overlap_graph::OverlapGraph;
 // helper: reverse-complement node id (swap '+' and '-')
 fn rc_node(id: &str) -> String {
     if let Some(last) = id.chars().last() {
-        let base = &id[..id.len()-1];
+        let base = &id[..id.len() - 1];
         match last {
             '+' => format!("{}-", base),
             '-' => format!("{}+", base),
             _ => id.to_string(),
         }
-    } else { id.to_string() }
+    } else {
+        id.to_string()
+    }
 }
 
 /// Ensure graph symmetry: for every edge `u -> v`, require an edge `rc(v) -> rc(u)`.
@@ -27,7 +29,10 @@ pub fn symmetrize_graph(graph: &mut OverlapGraph) -> usize {
             let v_rc = rc_node(&v);
             let u_rc = rc_node(&u);
             // check if rc(v) has edge to rc(u)
-            let has_symm = graph.nodes.get(&v_rc).map_or(false, |vn| vn.edges.iter().any(|e| e.target_id == u_rc));
+            let has_symm = graph
+                .nodes
+                .get(&v_rc)
+                .map_or(false, |vn| vn.edges.iter().any(|e| e.target_id == u_rc));
             if !has_symm {
                 if let Some(un) = graph.nodes.get_mut(&u) {
                     un.remove_edge(&v);
@@ -37,19 +42,19 @@ pub fn symmetrize_graph(graph: &mut OverlapGraph) -> usize {
         }
     }
     if removed > 0 {
-        eprintln!("[heuristic_simplification::symmetrize_graph] removed {} asymmetric edges", removed);
+        //eprintln!("[heuristic_simplification::symmetrize_graph] removed {} asymmetric edges", removed);
     }
     removed
 }
 
 /// Remove short edges (edges with overlap length below threshold)
 /// For each node with multiple outgoing edges, keep only those with overlap length >= drop_ratio * best_overlap_len
-pub fn remove_short_edges(graph: &mut OverlapGraph, drop_ratio: f64) {
+pub fn remove_short_edges(graph: &mut OverlapGraph, drop_ratio: f64) -> usize {
     let mut n_short = 0;
 
     // iterate over a snapshot of current node keys (no mutation while iterating)
     let keys: Vec<String> = graph.nodes.keys().cloned().collect();
-    
+
     for node_id in keys {
         // Get the outgoing edges for this node
         let edges_to_remove: Vec<String> = if let Some(node) = graph.nodes.get(&node_id) {
@@ -60,12 +65,16 @@ pub fn remove_short_edges(graph: &mut OverlapGraph, drop_ratio: f64) {
 
             // Find the maximum overlap length
             let max_overlap = node.edges.iter().map(|e| e.overlap_len).max().unwrap_or(0);
-            
+
             // Calculate threshold
             let threshold = (max_overlap as f64 * drop_ratio + 0.499) as u32;
 
             // Collect edges that are below the threshold
-            node.edges.iter().filter(|e| e.overlap_len < threshold).map(|e| e.target_id.clone()).collect()
+            node.edges
+                .iter()
+                .filter(|e| e.overlap_len < threshold)
+                .map(|e| e.target_id.clone())
+                .collect()
         } else {
             continue;
         };
@@ -82,8 +91,8 @@ pub fn remove_short_edges(graph: &mut OverlapGraph, drop_ratio: f64) {
             }
         }
     }
-
-    eprintln!("remove short edges: removed {} short edges", n_short);
+    n_short
+    //eprintln!("remove short edges: removed {} short edges", n_short);
 }
 
 /// Cut small bi-loops: patterns where v->...->x and w->v, w->x exist
@@ -149,7 +158,7 @@ pub fn cut_biloop(graph: &mut OverlapGraph, max_ext: usize) {
     }
 
     if cnt > 0 {
-        eprintln!("[heuristic_simplification::cut_biloop] cut {} small bi-loops", cnt);
+        //eprintln!("[heuristic_simplification::cut_biloop] cut {} small bi-loops", cnt);
     }
 }
 
@@ -239,23 +248,31 @@ pub fn cut_internal(graph: &mut OverlapGraph, max_ext: usize) {
                 path.push(cur.clone());
                 let next = cur_node.edges[0].target_id.clone();
                 // avoid cycles
-                if path.contains(&next) { break; }
+                if path.contains(&next) {
+                    break;
+                }
                 cur = next;
                 steps += 1;
             }
 
             // check if chain ended at a branching node (both ends branching)
-            if path.is_empty() { continue; }
+            if path.is_empty() {
+                continue;
+            }
             if let Some(end_node) = graph.nodes.get(&cur) {
-                if end_node.edges.len() < 2 { continue; }
+                if end_node.edges.len() < 2 {
+                    continue;
+                }
             } else {
                 continue;
             }
 
             // delete the internal reads (both orientations)
             for internal in path {
-                if internal.len() < 1 { continue; }
-                let read = &internal[..internal.len()-1];
+                if internal.len() < 1 {
+                    continue;
+                }
+                let read = &internal[..internal.len() - 1];
                 let plus = format!("{}+", read);
                 let minus = format!("{}-", read);
                 let removed_plus = graph.nodes.remove(&plus);
@@ -274,7 +291,7 @@ pub fn cut_internal(graph: &mut OverlapGraph, max_ext: usize) {
     }
 
     if removed_reads > 0 {
-        eprintln!("[heuristic_simplification::cut_internal] cut {} internal sequences", removed_reads);
+        //eprintln!("[heuristic_simplification::cut_internal] cut {} internal sequences", removed_reads);
     }
 }
 
@@ -289,13 +306,15 @@ pub fn remove_multi_edges(graph: &mut OverlapGraph) -> usize {
     // helper to compute reverse-complement node id
     let rc = |id: &str| -> String {
         if let Some(last) = id.chars().last() {
-            let base = &id[..id.len()-1];
+            let base = &id[..id.len() - 1];
             match last {
                 '+' => format!("{}-", base),
                 '-' => format!("{}+", base),
                 _ => id.to_string(),
             }
-        } else { id.to_string() }
+        } else {
+            id.to_string()
+        }
     };
 
     for src in keys {
@@ -303,7 +322,9 @@ pub fn remove_multi_edges(graph: &mut OverlapGraph) -> usize {
             Some(n) => n.edges.clone(),
             None => continue,
         };
-        if edges_snapshot.len() < 2 { continue; }
+        if edges_snapshot.len() < 2 {
+            continue;
+        }
 
         let mut counts: HashMap<String, usize> = HashMap::new();
         let mut best_idx: HashMap<String, usize> = HashMap::new();
@@ -312,19 +333,29 @@ pub fn remove_multi_edges(graph: &mut OverlapGraph) -> usize {
             match best_idx.get(&e.target_id) {
                 Some(&bi) => {
                     let be = &edges_snapshot[bi];
-                    if e.overlap_len > be.overlap_len || (e.overlap_len == be.overlap_len && e.identity > be.identity) {
+                    if e.overlap_len > be.overlap_len
+                        || (e.overlap_len == be.overlap_len && e.identity > be.identity)
+                    {
                         best_idx.insert(e.target_id.clone(), i);
                     }
                 }
-                None => { best_idx.insert(e.target_id.clone(), i); }
+                None => {
+                    best_idx.insert(e.target_id.clone(), i);
+                }
             }
         }
 
-        if edges_snapshot.len() == best_idx.len() { continue; }
+        if edges_snapshot.len() == best_idx.len() {
+            continue;
+        }
 
-        let mut chosen: Vec<(String, crate::create_overlap_graph::EdgeInfo)> = best_idx.into_iter().map(|(t,i)| (t, edges_snapshot[i].clone())).collect();
-        chosen.sort_by(|a,b| a.0.cmp(&b.0));
-        let new_edges: Vec<crate::create_overlap_graph::EdgeInfo> = chosen.into_iter().map(|(_t,e)| e).collect();
+        let mut chosen: Vec<(String, crate::create_overlap_graph::EdgeInfo)> = best_idx
+            .into_iter()
+            .map(|(t, i)| (t, edges_snapshot[i].clone()))
+            .collect();
+        chosen.sort_by(|a, b| a.0.cmp(&b.0));
+        let new_edges: Vec<crate::create_overlap_graph::EdgeInfo> =
+            chosen.into_iter().map(|(_t, e)| e).collect();
 
         let mut removed_targets: Vec<String> = Vec::new();
         for (t, cnt) in counts.into_iter() {
@@ -356,22 +387,24 @@ pub fn remove_multi_edges(graph: &mut OverlapGraph) -> usize {
     // ensure symmetry after modifications
     let sym_removed = symmetrize_graph(graph);
     if n_multi > 0 || sym_removed > 0 {
-        eprintln!("[heuristic_simplification::remove_multi_arcs] removed {} multi-arcs ({} asymmetric edges removed)", n_multi, sym_removed);
+        //eprintln!("[heuristic_simplification::remove_multi_arcs] removed {} multi-arcs ({} asymmetric edges removed)", n_multi, sym_removed);
     }
 
     n_multi
 }
 
 /// Remove low identity from nodes with multiple outgoing edges
-pub fn remove_weak(graph: &mut OverlapGraph,) {
-    
+pub fn remove_weak(graph: &mut OverlapGraph) {
     // iterate over a snapshot of current node keys (no mutation while iterating)
     let keys: Vec<String> = graph.nodes.keys().cloned().collect();
     for n in keys.into_iter() {
-
         // check the amount of outgoing edges
         let outgoing = match graph.nodes.get(&n) {
-            Some(n) => n.edges.iter().map(|e| (e.target_id.clone(), e.identity)).collect::<Vec<_>>(),
+            Some(n) => n
+                .edges
+                .iter()
+                .map(|e| (e.target_id.clone(), e.identity))
+                .collect::<Vec<_>>(),
             None => continue,
         };
 
@@ -379,7 +412,7 @@ pub fn remove_weak(graph: &mut OverlapGraph,) {
         if outgoing.len() < 2 {
             continue;
         }
-        
+
         // only keep edge with highest identity, remove others
         let mut max_identity: f64 = -1.0;
         let mut best_target: Option<String> = None;

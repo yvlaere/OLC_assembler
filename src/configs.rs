@@ -7,22 +7,6 @@ pub struct AlignmentFilteringConfig {
     pub overhang_ratio: f32,
 }
 
-pub struct CreateOverlapGraphConfig {
-    pub overlaps: String,
-}
-
-pub struct SimplifyOverlapGraphConfig {
-    pub max_bubble_length: u32,
-    pub tip_length: u32,
-}
-
-pub struct UnitigConfig {
-    pub overlap_graph_binary: String,
-    pub reads_fq: String,
-    pub output_prefix: String,
-    pub output_dir: String,
-}
-
 pub struct AssembleConfig {
     pub input_paf: Option<String>,
     pub min_overlap_length: u32,
@@ -33,4 +17,10 @@ pub struct AssembleConfig {
     pub reads_fq: String,
     pub output_prefix: String,
     pub output_dir: String,
+    pub max_bubble_length: u32,
+    pub min_support_ratio: f64,
+    pub max_tip_len: u32,
+    pub fuzz: u32,
+    pub cleanup_iterations: u32,
+    pub short_edge_ratio: f64,
 }

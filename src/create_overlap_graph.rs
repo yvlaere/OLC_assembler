@@ -1,11 +1,10 @@
+use crate::alignment_filtering::Overlap;
 /// Overlap graph creation module
 /// read overlaps from alignment filtering module and build the overlap graph
-
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{BufRead, BufReader, BufWriter, Write};
-use crate::alignment_filtering::Overlap;
 use std::io;
+use std::io::{BufWriter, Write};
 
 /// Edge info containing all the metrics we track
 #[derive(Clone)]
@@ -25,7 +24,6 @@ pub struct Node {
 }
 
 impl Node {
-
     /// Create a new node with given id and no edges
     fn new(node_id: String) -> Self {
         Self {
@@ -41,10 +39,18 @@ impl Node {
             // currently impossible due to the overlap filtering
             // handling might change in the future to handle this case
             // silently ignore duplicate edges but log for debugging
-            eprintln!("Warning: duplicate edge {} -> {} ignored", self.node_id, target_node);
+            eprintln!(
+                "Warning: duplicate edge {} -> {} ignored",
+                self.node_id, target_node
+            );
             return;
         }
-        self.edges.push(EdgeInfo {target_id: target_node.to_owned(), edge_len, overlap_len, identity,});
+        self.edges.push(EdgeInfo {
+            target_id: target_node.to_owned(),
+            edge_len,
+            overlap_len,
+            identity,
+        });
     }
 
     /// Remove a directed edge to the node with target_node id
@@ -66,7 +72,6 @@ pub struct OverlapGraph {
 }
 
 impl OverlapGraph {
-
     /// Create a new empty overlap graph
     fn new() -> Self {
         Self {
@@ -76,11 +81,20 @@ impl OverlapGraph {
 
     /// Add a node to the graph if it does not already exist, if it already exists do nothing
     fn add_node(&mut self, node_id: String) {
-        self.nodes.entry(node_id.clone()).or_insert_with(|| Node::new(node_id));
+        self.nodes
+            .entry(node_id.clone())
+            .or_insert_with(|| Node::new(node_id));
     }
 
     /// Add a directed edge from from_id to to_id with given edge length and metrics
-    fn add_edge(&mut self, from_id: &str, to_id: &str, edge_len: u32, overlap_len: u32, identity: f64) {
+    fn add_edge(
+        &mut self,
+        from_id: &str,
+        to_id: &str,
+        edge_len: u32,
+        overlap_len: u32,
+        identity: f64,
+    ) {
         // ensure nodes exist
         if !self.nodes.contains_key(from_id) || !self.nodes.contains_key(to_id) {
             panic!("add_edge: nodes must exist before adding edge");
@@ -92,7 +106,6 @@ impl OverlapGraph {
 
     /// Write the overlap graph to a DOT file for visualization
     pub fn write_dot<P: AsRef<std::path::Path>>(&self, path: P) -> std::io::Result<()> {
-
         // helper functions
         fn escape_dot(s: &str) -> String {
             s.replace('\\', "\\\\").replace('"', "\\\"")
@@ -132,7 +145,8 @@ impl OverlapGraph {
             writeln!(
                 w,
                 "  \"{}\" [style=filled fillcolor={} ];",
-                escape_dot(node_id), degree_color(*outdegrees.get(node_id).unwrap_or(&0))
+                escape_dot(node_id),
+                degree_color(*outdegrees.get(node_id).unwrap_or(&0))
             )?;
         }
 
@@ -146,9 +160,9 @@ impl OverlapGraph {
                 writeln!(
                     w,
                     "  \"{}\" -> \"{}\";",
-                    from, to
-                    //"  \"{}\" -> \"{}\" [label=\"len={} ovl={} id={:.3}\"];",
-                    //from, to, e.edge_len, e.overlap_len, e.identity
+                    from,
+                    to //"  \"{}\" -> \"{}\" [label=\"len={} ovl={} id={:.3}\"];",
+                       //from, to, e.edge_len, e.overlap_len, e.identity
                 )?;
             }
         }
@@ -163,21 +177,20 @@ pub struct AlignmentFilteringOutput {
 }
 
 impl AlignmentFilteringOutput {
-
     // serialize the overlaps
-    pub fn serialize_overlaps(&self, path: &str,) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn serialize_overlaps(&self, path: &str) -> Result<(), Box<dyn std::error::Error>> {
         let file = File::create(path)?;
         let writer = BufWriter::new(file);
         bincode::serialize_into(writer, &self.overlaps)?;
-        
-        Ok(())
 
+        Ok(())
     }
 }
 
 /// Build overlap graph from overlaps
-pub fn run_create_overlap_graph(overlaps: HashMap<(usize, usize), Overlap>) -> Result<OverlapGraph, io::Error> {
-
+pub fn run_create_overlap_graph(
+    overlaps: HashMap<(usize, usize), Overlap>,
+) -> Result<OverlapGraph, io::Error> {
     println!("=== OVERLAP GRAPH CREATION ===");
     let mut g = OverlapGraph::new();
 
@@ -187,12 +200,24 @@ pub fn run_create_overlap_graph(overlaps: HashMap<(usize, usize), Overlap>) -> R
         // original orientation
         g.add_node(o.source_name.clone());
         g.add_node(o.sink_name.clone());
-        g.add_edge(&o.source_name, &o.sink_name, o.edge_len, o.overlap_len, o.identity);
+        g.add_edge(
+            &o.source_name,
+            &o.sink_name,
+            o.edge_len,
+            o.overlap_len,
+            o.identity,
+        );
 
         // reverse complement counterpart:
         g.add_node(o.rc_source_name.clone());
         g.add_node(o.rc_sink_name.clone());
-        g.add_edge(&o.rc_source_name, &o.rc_sink_name, o.rc_edge_len, o.overlap_len, o.identity);
+        g.add_edge(
+            &o.rc_source_name,
+            &o.rc_sink_name,
+            o.rc_edge_len,
+            o.overlap_len,
+            o.identity,
+        );
     }
 
     // graph stats

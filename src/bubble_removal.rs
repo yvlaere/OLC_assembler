@@ -1,3 +1,5 @@
+use crate::create_overlap_graph::OverlapGraph;
+use crate::utils;
 /// Bubble removal module
 /// using a "tour bus" style (BFS) search
 /// 1. for each node `u` with out-degree >= 2, consider every pair of distinct
@@ -11,10 +13,7 @@
 ///   lower-scoring path is removed (internal nodes removed, excluding u and m).
 /// 4. removals are RC-aware: the reverse-complement node for each removed node is
 ///   also removed, and all incoming edges to removed nodes are purged.
-
 use std::collections::{HashMap, HashSet, VecDeque};
-use crate::create_overlap_graph::OverlapGraph;
-use crate::utils;
 
 /// Path metrics for scoring
 #[derive(Clone, Default)]
@@ -28,23 +27,36 @@ struct PathMetrics {
 ///   - parent map (node -> parent)
 ///   - depth map (node -> depth from start)
 ///   - path metrics map (node -> PathMetrics)
-fn bfs_limited(graph: &OverlapGraph, start: &str, max_depth: usize,) -> (HashMap<String, Option<String>>, HashMap<String, usize>, HashMap<String, PathMetrics>,) {
-
+fn bfs_limited(
+    graph: &OverlapGraph,
+    start: &str,
+    max_depth: usize,
+) -> (
+    HashMap<String, Option<String>>,
+    HashMap<String, usize>,
+    HashMap<String, PathMetrics>,
+) {
     // initialize
-    let mut parent: HashMap<String, Option<String>> = HashMap::new();   // map a node to its previous node in the path
-    let mut depth: HashMap<String, usize> = HashMap::new();             // map a node to its depth from start
-    let mut metrics: HashMap<String, PathMetrics> = HashMap::new();     // map a node to its path metrics
+    let mut parent: HashMap<String, Option<String>> = HashMap::new(); // map a node to its previous node in the path
+    let mut depth: HashMap<String, usize> = HashMap::new(); // map a node to its depth from start
+    let mut metrics: HashMap<String, PathMetrics> = HashMap::new(); // map a node to its path metrics
 
     // vecdeque is a double ended queue, allows efficient popping from front
     let mut q: VecDeque<String> = VecDeque::new();
     parent.insert(start.to_string(), None);
     depth.insert(start.to_string(), 0);
-    metrics.insert(start.to_string(), PathMetrics {read_count: 1, total_overlap_len: 0, avg_identity: 1.0,});
+    metrics.insert(
+        start.to_string(),
+        PathMetrics {
+            read_count: 1,
+            total_overlap_len: 0,
+            avg_identity: 1.0,
+        },
+    );
     q.push_back(start.to_string());
 
     // BFS loop (uses a fifo queue, push to the back, pop from the front)
     while let Some(cur) = q.pop_front() {
-        
         // if depth limit is reached, stop adding nodes
         let cur_depth = *depth.get(&cur).unwrap_or(&0);
         if cur_depth >= max_depth {
@@ -54,13 +66,11 @@ fn bfs_limited(graph: &OverlapGraph, start: &str, max_depth: usize,) -> (HashMap
         // expand neighbours
         if let Some(node) = graph.nodes.get(&cur) {
             for edge in &node.edges {
-
                 // if the edge target is unseen, add it to parent/depth/metrics
                 if !depth.contains_key(&edge.target_id) {
-                    
                     parent.insert(edge.target_id.clone(), Some(cur.clone()));
                     depth.insert(edge.target_id.clone(), cur_depth + 1);
-                    
+
                     // update path metrics, get metrics from current node and update them for the target node
                     let mut new_metrics = metrics.get(&cur).cloned().unwrap_or_default();
                     new_metrics.read_count += 1;
@@ -68,13 +78,14 @@ fn bfs_limited(graph: &OverlapGraph, start: &str, max_depth: usize,) -> (HashMap
                     // update running average of identity
                     let old_weight = new_metrics.total_overlap_len as f64 - edge.overlap_len as f64;
                     let new_identity = if old_weight > 0.0 {
-                        (new_metrics.avg_identity * old_weight + edge.identity * edge.overlap_len as f64) 
-                        / new_metrics.total_overlap_len as f64
+                        (new_metrics.avg_identity * old_weight
+                            + edge.identity * edge.overlap_len as f64)
+                            / new_metrics.total_overlap_len as f64
                     } else {
                         edge.identity
                     };
                     new_metrics.avg_identity = new_identity;
-                    
+
                     metrics.insert(edge.target_id.clone(), new_metrics);
                     q.push_back(edge.target_id.clone());
                 }
@@ -87,8 +98,11 @@ fn bfs_limited(graph: &OverlapGraph, start: &str, max_depth: usize,) -> (HashMap
 
 /// Reconstruct path from source to sink using the parent map returned by bfs_limited
 /// If sink is not reachable, returns an empty Vec
-fn reconstruct_path(parent: &HashMap<String, Option<String>>, source: &str, sink: &str,) -> Vec<String> {
-    
+fn reconstruct_path(
+    parent: &HashMap<String, Option<String>>,
+    source: &str,
+    sink: &str,
+) -> Vec<String> {
     // the path will be reconstructed in reverse
     let mut path_rev: Vec<String> = Vec::new();
     let mut cur = sink.to_string();
@@ -108,8 +122,7 @@ fn reconstruct_path(parent: &HashMap<String, Option<String>>, source: &str, sink
 }
 
 /// Remove simple bubbles in the overlap graph.
-pub fn remove_bubbles(graph: &mut OverlapGraph, max_bubble_len: usize, min_support_ratio: f64,) {
-    
+pub fn remove_bubbles(graph: &mut OverlapGraph, max_bubble_len: usize, min_support_ratio: f64) {
     if max_bubble_len == 0 {
         return;
     }
@@ -118,10 +131,13 @@ pub fn remove_bubbles(graph: &mut OverlapGraph, max_bubble_len: usize, min_suppo
     let node_keys: Vec<String> = graph.nodes.keys().cloned().collect();
 
     for n in node_keys.iter() {
-
         // get outgoing neighbors (clone so we don't borrow across mutation)
         let outgoing = match graph.nodes.get(n) {
-            Some(n) => n.edges.iter().map(|e| (e.target_id.clone(), e.edge_len)).collect::<Vec<_>>(),
+            Some(n) => n
+                .edges
+                .iter()
+                .map(|e| (e.target_id.clone(), e.edge_len))
+                .collect::<Vec<_>>(),
             None => continue,
         };
 
@@ -151,7 +167,8 @@ pub fn remove_bubbles(graph: &mut OverlapGraph, max_bubble_len: usize, min_suppo
                 // check intersection of reached nodes
                 let mut meetings: Vec<(&String, usize)> = Vec::new(); // (node, combined_depth)
                 for node in reached_a.intersection(&reached_b) {
-                    let d = depth_a.get(*node).unwrap_or(&usize::MAX) + depth_b.get(*node).unwrap_or(&usize::MAX);
+                    let d = depth_a.get(*node).unwrap_or(&usize::MAX)
+                        + depth_b.get(*node).unwrap_or(&usize::MAX);
                     meetings.push((node.clone(), d));
                 }
 
@@ -183,13 +200,13 @@ pub fn remove_bubbles(graph: &mut OverlapGraph, max_bubble_len: usize, min_suppo
                 const IDENTITY_WEIGHT: f64 = 2.0;
                 const READ_COUNT_WEIGHT: f64 = 1.5;
 
-                let score_a = (metrics_a.total_overlap_len as f64 * OVERLAP_WEIGHT) +
-                            (metrics_a.avg_identity * IDENTITY_WEIGHT * 100.0) +
-                            (metrics_a.read_count as f64 * READ_COUNT_WEIGHT);
-                
-                let score_b = (metrics_b.total_overlap_len as f64 * OVERLAP_WEIGHT) +
-                            (metrics_b.avg_identity * IDENTITY_WEIGHT * 100.0) +
-                            (metrics_b.read_count as f64 * READ_COUNT_WEIGHT);
+                let score_a = (metrics_a.total_overlap_len as f64 * OVERLAP_WEIGHT)
+                    + (metrics_a.avg_identity * IDENTITY_WEIGHT * 100.0)
+                    + (metrics_a.read_count as f64 * READ_COUNT_WEIGHT);
+
+                let score_b = (metrics_b.total_overlap_len as f64 * OVERLAP_WEIGHT)
+                    + (metrics_b.avg_identity * IDENTITY_WEIGHT * 100.0)
+                    + (metrics_b.read_count as f64 * READ_COUNT_WEIGHT);
 
                 // if both paths have no score (unexpected), skip
                 if score_a == 0.0 && score_b == 0.0 {
@@ -198,16 +215,15 @@ pub fn remove_bubbles(graph: &mut OverlapGraph, max_bubble_len: usize, min_suppo
 
                 // compare paths: higher score wins
                 // if scores equal, shorter path (less depth) wins
-                let (loser_path, winner_score) = if score_a > score_b || (score_a == score_b && depth_a < depth_b) {
-                    (path_b.clone(), score_a)
-                } 
-                else if score_b > score_a || (score_a == score_b && depth_b < depth_a) {
-                    (path_a.clone(), score_b)
-                } 
-                else {
-                    // Exactly equal - skip this bubble
-                    continue;
-                };
+                let (loser_path, winner_score) =
+                    if score_a > score_b || (score_a == score_b && depth_a < depth_b) {
+                        (path_b.clone(), score_a)
+                    } else if score_b > score_a || (score_a == score_b && depth_b < depth_a) {
+                        (path_a.clone(), score_b)
+                    } else {
+                        // Exactly equal - skip this bubble
+                        continue;
+                    };
 
                 // require that the winner has enough support (based on score difference and min_support_ratio)
                 let loser_score = if score_a > score_b { score_b } else { score_a };

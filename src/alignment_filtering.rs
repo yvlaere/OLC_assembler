@@ -3,14 +3,13 @@
 /// 1) Read all alignments, store them if they pass basic filters (no self-alignment, overlap length, identity), only store the longest alignment per read pair
 /// 2) Calculate coverage statistics per reads
 /// 3) Classify alignments into internal matches, contained reads, proper overlaps
-
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs::File;
-use std::io::{self, BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader};
 
 // enable serialization for debugging purposes
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::io::BufWriter;
 
 /// Struct to hold a read
@@ -44,8 +43,10 @@ struct Alignment {
 impl Alignment {
     fn from_line(line: &str) -> Option<Self> {
         let fields: Vec<&str> = line.split('\t').collect();
-        if fields.len() < 12 { return None; }
-        
+        if fields.len() < 12 {
+            return None;
+        }
+
         Some(Self {
             query_name: fields[0].to_string(),
             query_length: fields[1].parse().ok()?,
@@ -98,20 +99,27 @@ pub struct AlignmentFilteringOutput {
 }
 
 impl AlignmentFilteringOutput {
-
     // serialize the overlaps
-    pub fn serialize_overlaps(&self, path: &str,) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn serialize_overlaps(&self, path: &str) -> Result<(), Box<dyn std::error::Error>> {
         let file = File::create(path)?;
         let writer = BufWriter::new(file);
         bincode::serialize_into(writer, &self.overlaps)?;
-        
-        Ok(())
 
+        Ok(())
     }
 }
 
 /// Classify alignment and update contained reads set
-fn classify_alignment(r: &Alignment, query_id: usize, target_id: usize, overlaps: &mut HashMap<(usize, usize), Overlap>, max_overhang: u32, overhang_ratio: f64, reads: &Vec<Read>, min_overlap_length: u32) -> AlignmentType {
+fn classify_alignment(
+    r: &Alignment,
+    query_id: usize,
+    target_id: usize,
+    overlaps: &mut HashMap<(usize, usize), Overlap>,
+    _max_overhang: u32,
+    overhang_ratio: f64,
+    reads: &Vec<Read>,
+    min_overlap_length: u32,
+) -> AlignmentType {
     // overlaps are a subset of alignments where (in theory) two read edges, one from each read, are part of the alignment
     // this function tries to differentiate between proper overlaps, internal matches, and containments
 
@@ -122,7 +130,7 @@ fn classify_alignment(r: &Alignment, query_id: usize, target_id: usize, overlaps
     let target_end = std::cmp::min(r.target_end, reads[target_id].coverage_end as i64);
     let query_length = (reads[query_id].coverage_end - reads[query_id].coverage_start) as i64;
     let target_length = (reads[target_id].coverage_end - reads[target_id].coverage_start) as i64;
-    
+
     // using naming convention corresponding with miniasm paper
     let b1 = query_start;
     let e1 = query_end;
@@ -133,7 +141,11 @@ fn classify_alignment(r: &Alignment, query_id: usize, target_id: usize, overlaps
         (target_start, target_end, target_length as i64)
     } else {
         // reverse complement coordinates on the target
-        (target_length as i64 - target_end, target_length as i64 - target_start, target_length as i64)
+        (
+            target_length as i64 - target_end,
+            target_length as i64 - target_start,
+            target_length as i64,
+        )
     };
 
     // overhang is the part next to the overlap where the reads don't align, but should in case of perfect overlap
@@ -181,7 +193,9 @@ fn classify_alignment(r: &Alignment, query_id: usize, target_id: usize, overlaps
     }
 
     // filter out alignments with very small overlaps
-    if overlap_length1 + overhang_left + overhang_right < min_overlap_length as i64  || overlap_length2 + overhang_left + overhang_right < min_overlap_length as i64 {
+    if overlap_length1 + overhang_left + overhang_right < min_overlap_length as i64
+        || overlap_length2 + overhang_left + overhang_right < min_overlap_length as i64
+    {
         return AlignmentType::Filtered;
     }
 
@@ -209,7 +223,7 @@ fn classify_alignment(r: &Alignment, query_id: usize, target_id: usize, overlaps
         let edge2_len = edge2_len_i64 as u32;
 
         // shared stats
-        let overlap_len = r.alignment_block_length as u32;
+        let _overlap_len = r.alignment_block_length as u32;
         let identity = r.percent_identity() as f64;
 
         // create overlap object and store if the overlap is valid
@@ -224,9 +238,7 @@ fn classify_alignment(r: &Alignment, query_id: usize, target_id: usize, overlaps
             identity,
         };
         overlaps.insert((query_id, target_id), ov);
-    } 
-    else {
-
+    } else {
         // second to first overlap (target -> query)
         // direction t -> q
         let q_plus = format!("{}+", r.query_name);
@@ -245,7 +257,7 @@ fn classify_alignment(r: &Alignment, query_id: usize, target_id: usize, overlaps
         let edge2_len = edge2_len_i64 as u32;
 
         // shared stats
-        let overlap_len = r.alignment_block_length as u32;
+        let _overlap_len = r.alignment_block_length as u32;
         let identity = r.percent_identity() as f64;
 
         // create overlap object and store
@@ -265,8 +277,13 @@ fn classify_alignment(r: &Alignment, query_id: usize, target_id: usize, overlaps
 }
 
 /// Filter PAF file based on overlap quality criteria
-pub fn run_alignment_filtering(paf_in: &str, min_overlap_length: &u32, min_overlap_count: &u32, min_percent_identity: &f32, overhang_ratio: &f32) -> Result<AlignmentFilteringOutput, Box<dyn std::error::Error>> {
-
+pub fn run_alignment_filtering(
+    paf_in: &str,
+    min_overlap_length: &u32,
+    min_overlap_count: &u32,
+    min_percent_identity: &f32,
+    overhang_ratio: &f32,
+) -> Result<AlignmentFilteringOutput, Box<dyn std::error::Error>> {
     // Setup data structures
     // read name to read id mapping
     let mut read_name2read_id: HashMap<String, usize> = HashMap::new();
@@ -294,18 +311,24 @@ pub fn run_alignment_filtering(paf_in: &str, min_overlap_length: &u32, min_overl
         let line = line?;
 
         // skip header lines
-        if line.starts_with('#') || line.trim().is_empty() { continue; }
+        if line.starts_with('#') || line.trim().is_empty() {
+            continue;
+        }
 
         if let Some(record) = Alignment::from_line(&line) {
-
             // skip self alignments
-            if record.is_self_alignment() { self_alignments_skipped +=1; continue; }
+            if record.is_self_alignment() {
+                self_alignments_skipped += 1;
+                continue;
+            }
 
             let query_overlap_length = record.query_end - record.query_start;
             let target_overlap_length = record.target_end - record.target_start;
-            
+
             // skip low overlap length alignments
-            if query_overlap_length < (*min_overlap_length).into() || target_overlap_length < (*min_overlap_length).into() {
+            if query_overlap_length < (*min_overlap_length).into()
+                || target_overlap_length < (*min_overlap_length).into()
+            {
                 alignment_length_skipped += 1;
                 continue;
             }
@@ -317,7 +340,6 @@ pub fn run_alignment_filtering(paf_in: &str, min_overlap_length: &u32, min_overl
             }
             // Get or create read ids for query and target
             let query_id = match read_name2read_id.get(&record.query_name) {
-                
                 // we have seen this read before, get its id
                 Some(&id) => id,
 
@@ -328,7 +350,14 @@ pub fn run_alignment_filtering(paf_in: &str, min_overlap_length: &u32, min_overl
                     read_name2read_id.insert(record.query_name.clone(), id);
                     alignment_ids_per_read.push(HashSet::new());
                     // create new read object
-                    reads.push(Read {id, name: record.query_name.clone(), length: record.query_length, per_base_coverage: vec![0; record.query_length as usize], coverage_start: 0, coverage_end: record.query_length,});
+                    reads.push(Read {
+                        id,
+                        name: record.query_name.clone(),
+                        length: record.query_length,
+                        per_base_coverage: vec![0; record.query_length as usize],
+                        coverage_start: 0,
+                        coverage_end: record.query_length,
+                    });
                     id
                 }
             };
@@ -341,7 +370,14 @@ pub fn run_alignment_filtering(paf_in: &str, min_overlap_length: &u32, min_overl
                     read_name2read_id.insert(record.target_name.clone(), id);
                     alignment_ids_per_read.push(HashSet::new());
                     // create new read object
-                    reads.push(Read {id, name: record.target_name.clone(), length: record.target_length, per_base_coverage: vec![0; record.target_length as usize], coverage_start: 0, coverage_end: record.target_length,});
+                    reads.push(Read {
+                        id,
+                        name: record.target_name.clone(),
+                        length: record.target_length,
+                        per_base_coverage: vec![0; record.target_length as usize],
+                        coverage_start: 0,
+                        coverage_end: record.target_length,
+                    });
                     id
                 }
             };
@@ -354,7 +390,6 @@ pub fn run_alignment_filtering(paf_in: &str, min_overlap_length: &u32, min_overl
             // if multiple alignments exist between the same read pair, keep the longest one
 
             if alignment_ids_per_read[query_id].contains(&target_id) {
-                
                 // an alignment between these reads already exists, it may be stored under
                 // (query_id, target_id) or (target_id, query_id)
                 if let Some(existing) = alignments.get(&(query_id, target_id)) {
@@ -362,8 +397,7 @@ pub fn run_alignment_filtering(paf_in: &str, min_overlap_length: &u32, min_overl
                         // replace the existing directed entry
                         alignments.insert((query_id, target_id), record.clone());
                     }
-                } 
-                else if let Some(existing) = alignments.get(&(target_id, query_id)) {
+                } else if let Some(existing) = alignments.get(&(target_id, query_id)) {
                     if record.alignment_block_length > existing.alignment_block_length {
                         // remove the old reversed entry and store the new (keeps orientation of current record)
                         alignments.remove(&(target_id, query_id));
@@ -381,16 +415,26 @@ pub fn run_alignment_filtering(paf_in: &str, min_overlap_length: &u32, min_overl
             }
 
             // update read coverage statistics
-            reads[query_id].per_base_coverage[qstart as usize .. qend as usize].iter_mut().for_each(|c| *c += 1);
-            reads[target_id].per_base_coverage[tstart as usize .. tend as usize].iter_mut().for_each(|c| *c += 1);
+            reads[query_id].per_base_coverage[qstart as usize..qend as usize]
+                .iter_mut()
+                .for_each(|c| *c += 1);
+            reads[target_id].per_base_coverage[tstart as usize..tend as usize]
+                .iter_mut()
+                .for_each(|c| *c += 1);
         }
     }
 
     println!("=== ALIGNMENT FILTERING ===");
     println!("=== PHASE 1: CRUDE FILTERING ===");
     println!("Total self-alignments skipped: {}", self_alignments_skipped);
-    println!("Total alignments skipped due to length filter: {}", alignment_length_skipped);
-    println!("Total alignments skipped due to percent identity filter: {}", percent_identity_skipped);
+    println!(
+        "Total alignments skipped due to length filter: {}",
+        alignment_length_skipped
+    );
+    println!(
+        "Total alignments skipped due to percent identity filter: {}",
+        percent_identity_skipped
+    );
     println!("Total reads kept: {}", reads.len());
     println!("Total alignments kept: {}", alignments.len());
     println!("=== PHASE 1 FINISHED ===");
@@ -423,11 +467,20 @@ pub fn run_alignment_filtering(paf_in: &str, min_overlap_length: &u32, min_overl
 
     println!("=== PHASE 2 FINISHED ===");
     println!("=== PHASE 3: ALIGNMENT CLASSIFICATION ===");
-    
+
     // classify alignments and update contained reads set
     for ((query_id, target_id), alignment) in &alignments {
         //let alignment_type = match classify_alignment(alignment, *query_id, *target_id, &mut overlaps, *max_overhang, *overhang_ratio, &reads, min_overlap_length) {
-        let alignment_type = match classify_alignment(alignment, *query_id, *target_id, &mut overlaps, 4000000000, (*overhang_ratio) as f64, &reads, *min_overlap_length) {
+        let _alignment_type = match classify_alignment(
+            alignment,
+            *query_id,
+            *target_id,
+            &mut overlaps,
+            4000000000,
+            (*overhang_ratio) as f64,
+            &reads,
+            *min_overlap_length,
+        ) {
             AlignmentType::Filtered => {
                 continue; // skip filtered alignments
             }
@@ -451,21 +504,42 @@ pub fn run_alignment_filtering(paf_in: &str, min_overlap_length: &u32, min_overl
     }
 
     println!("Total overlaps after classification: {}", overlaps.len());
-    
-    // filter contained reads from overlaps
-    overlaps.retain(|(q_id, t_id), _| !contained_reads.contains(q_id) && !contained_reads.contains(t_id));
 
-    println!("Total overlaps after removing contained reads: {}", overlaps.len());
+    // filter contained reads from overlaps
+    overlaps.retain(|(q_id, t_id), _| {
+        !contained_reads.contains(q_id) && !contained_reads.contains(t_id)
+    });
+
+    println!(
+        "Total overlaps after removing contained reads: {}",
+        overlaps.len()
+    );
 
     // get unique reads from overlaps
-    let unique_reads: HashSet<usize> = overlaps.keys().flat_map(|(q_id, t_id)| vec![*q_id, *t_id]).collect();
+    let unique_reads: HashSet<usize> = overlaps
+        .keys()
+        .flat_map(|(q_id, t_id)| vec![*q_id, *t_id])
+        .collect();
 
     // filter low coverage reads
     let threshold = *min_overlap_count as u32;
-    let low_coverage_reads: Vec<_> = reads.iter().enumerate().filter(|(_, r)| r.per_base_coverage.iter().copied().max().unwrap_or(0) < threshold).map(|(id, _)| id).collect();
-    overlaps.retain(|(q_id, t_id), _| !low_coverage_reads.contains(q_id) && !low_coverage_reads.contains(t_id));
-    println!("Total number of reads for graph creation: {}", unique_reads.len());
-    println!("Total number of overlaps for graph creation: {}", overlaps.len());
+    let low_coverage_reads: Vec<_> = reads
+        .iter()
+        .enumerate()
+        .filter(|(_, r)| r.per_base_coverage.iter().copied().max().unwrap_or(0) < threshold)
+        .map(|(id, _)| id)
+        .collect();
+    overlaps.retain(|(q_id, t_id), _| {
+        !low_coverage_reads.contains(q_id) && !low_coverage_reads.contains(t_id)
+    });
+    println!(
+        "Total number of reads for graph creation: {}",
+        unique_reads.len()
+    );
+    println!(
+        "Total number of overlaps for graph creation: {}",
+        overlaps.len()
+    );
     println!("=== PHASE 3 FINISHED ===");
     println!("=== ALIGNMENT FILTERING FINISHED ===");
 

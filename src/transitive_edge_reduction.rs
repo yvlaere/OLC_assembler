@@ -2,7 +2,6 @@
 /// transitive edges are redundant edges that don't add any information to the graph
 /// Say read 1 overlaps with read 2 and read 2 overlaps with read 3 and read 1 also overlaps with read 3, then this last overlap is redundant, represented by a transitive edge
 /// Algorithm based on https://doi.org/10.1093/bioinformatics/bti1114
-
 use crate::create_overlap_graph::OverlapGraph;
 use crate::utils;
 
@@ -18,13 +17,12 @@ enum Mark {
 
 /// Reduce transitive edges
 pub fn reduce_transitive_edges(g: &mut OverlapGraph, fuzz: u32) {
-
     // prepare node list to iterate deterministically and avoid borrow conflicts
     let node_keys: Vec<String> = g.nodes.keys().cloned().collect();
 
     // mark: per-node status (Vacant/InPlay/Eliminated)
     let mut mark: HashMap<String, Mark> = HashMap::with_capacity(g.nodes.len());
-    
+
     // reduced set: node pairs (from, to) that should be removed
     let mut reduced: HashSet<(String, String)> = HashSet::new();
 
@@ -38,7 +36,6 @@ pub fn reduce_transitive_edges(g: &mut OverlapGraph, fuzz: u32) {
 
     // main loop: For every node compare nodes encountered two steps into the future with those encountered one step into the future
     for n1 in &node_keys {
-
         // skip if node not present (may have been removed) or no outgoing edges
         let out_edges = match g.nodes.get(n1) {
             Some(node) => &node.edges,
@@ -98,11 +95,9 @@ pub fn reduce_transitive_edges(g: &mut OverlapGraph, fuzz: u32) {
                     let len_n2n3 = e_n3.edge_len;
                     let do_eliminate = if len_n2n3 < fuzz {
                         true
-                    } 
-                    else if let Some(min_len) = min_len_opt {
+                    } else if let Some(min_len) = min_len_opt {
                         len_n2n3 == min_len
-                    } 
-                    else {
+                    } else {
                         false
                     };
 
@@ -125,10 +120,10 @@ pub fn reduce_transitive_edges(g: &mut OverlapGraph, fuzz: u32) {
     } // end for n1
 
     // 6) Actually remove reduced edges from the graph (and remove reverse-complement counterparts if present)
-    
+
     // Collect all edges to remove first
     let mut edges_to_remove: Vec<(String, String)> = Vec::new();
-    
+
     for n1 in g.nodes.keys() {
         if let Some(node) = g.nodes.get(n1) {
             for e in &node.edges {

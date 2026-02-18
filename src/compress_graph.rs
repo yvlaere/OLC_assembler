@@ -1,12 +1,11 @@
+use crate::utils;
 /// graph compression module
 /// creates a compressed graph of unitigs from an overlap graph
 /// 1. get the indegree and outdegree of each node
 /// 2. get non-circular unitigs (start at nodes with indegree != 1 or outdegree != 1)
 /// 3. get circular unitigs (remaining unvisited nodes)
-
 use std::collections::{HashMap, HashSet};
 use std::io::BufRead;
-use crate::utils;
 
 pub struct UnitigMember {
     pub node_id: String,
@@ -35,14 +34,17 @@ pub struct UnitigEdge {
 
 /// Main function: compress maximal non-branching paths into unitigs.
 /// Preserves member lists and the overlap lengths between them.
-pub fn compress_unitigs(graph: &crate::create_overlap_graph::OverlapGraph, fastq_path: &str, fasta_path: &str) -> CompressedGraph {
-    
+pub fn compress_unitigs(
+    graph: &crate::create_overlap_graph::OverlapGraph,
+    fastq_path: &str,
+    fasta_path: &str,
+) -> CompressedGraph {
     // 1) create a map of indegrees
     let mut indegree: HashMap<String, usize> = HashMap::new();
     for id in graph.nodes.keys() {
         indegree.insert(id.clone(), 0);
     }
-    for (source_id, node) in &graph.nodes {
+    for (_source_id, node) in &graph.nodes {
         for e in &node.edges {
             *indegree.entry(e.target_id.clone()).or_default() += 1;
         }
@@ -52,17 +54,17 @@ pub fn compress_unitigs(graph: &crate::create_overlap_graph::OverlapGraph, fastq
     let mut unitigs: Vec<Unitig> = Vec::new();
 
     // Helper to extract the single outgoing neighbor if outdeg == 1
-    let out_single = |g: &crate::create_overlap_graph::OverlapGraph, cur: &str| -> Option<(String, u32)> {
-        g.nodes.get(cur).and_then(|n| {
-            if n.edges.len() == 1 {
-                let e = &n.edges[0];
-                Some((e.target_id.clone(), e.edge_len))
-            } 
-            else {
-                None
-            }
-        })
-    };
+    let out_single =
+        |g: &crate::create_overlap_graph::OverlapGraph, cur: &str| -> Option<(String, u32)> {
+            g.nodes.get(cur).and_then(|n| {
+                if n.edges.len() == 1 {
+                    let e = &n.edges[0];
+                    Some((e.target_id.clone(), e.edge_len))
+                } else {
+                    None
+                }
+            })
+        };
 
     // 2) non-circular unitigs, start unitigs at nodes where indegree != 1 || outdeg != 1
     for (id, node) in &graph.nodes {
@@ -70,19 +72,15 @@ pub fn compress_unitigs(graph: &crate::create_overlap_graph::OverlapGraph, fastq
         let outdeg_i = node.edges.len();
 
         // skip if already visited
-        if visited.contains(id) { continue; }
+        if visited.contains(id) {
+            continue;
+        }
 
         // start a unitig if indegree != 1 or outdegree != 1 (i.e., not a simple internal node)
         if indegree_i != 1 || outdeg_i != 1 {
-
-            println!("NC: starting unitig at node {}", id);
-
             // create a unitig for each outgoing edge
             // if outdeg == 0, there will be no unitig, each outgoing edge will be zero-indexed
             for out_edge_i in 0..outdeg_i {
-
-                println!("NC: processing outgoing edge {}", out_edge_i);
-
                 // start a new unitig from id
                 let mut members: Vec<UnitigMember> = Vec::new();
                 let mut cur = id.clone();
@@ -90,52 +88,71 @@ pub fn compress_unitigs(graph: &crate::create_overlap_graph::OverlapGraph, fastq
                 visited.insert(cur.clone());
 
                 // check the next outgoing edge
-                let (second, edge_len) =  {
+                let (second, edge_len) = {
                     let e = &node.edges[out_edge_i];
                     (e.target_id.clone(), e.edge_len)
                 };
                 // push the first node into the unitig members
-                members.push(UnitigMember { node_id: cur.clone(), edge: (second.clone(), edge_len) });
+                members.push(UnitigMember {
+                    node_id: cur.clone(),
+                    edge: (second.clone(), edge_len),
+                });
 
-                println!("NC: checking second node {}", second);
                 let second_indegree = *indegree.get(&second).unwrap_or(&0);
                 // check if the node breaks the chain
-                if second_indegree != 1 { println!("NC: unitig ended"); continue; }
+                if second_indegree != 1 {
+                    continue;
+                }
                 // stop if second is already visited
-                if visited.contains(&second) { println!("NC: second node already visited"); continue; }
-                
+                if visited.contains(&second) {
+                    continue;
+                }
+
                 visited.insert(second.clone());
                 cur = second.clone();
-                
+
                 // extend forward from second untill the end
                 while let Some((next, edge_len)) = out_single(graph, &cur) {
-
-                    println!("NC: extending unitig");
                     let next_indegree = *indegree.get(&next).unwrap_or(&0);
                     // don't add the node that breaks the chain
-                    if next_indegree != 1 { break; }
+                    if next_indegree != 1 {
+                        break;
+                    }
                     // stop if next is already visited
-                    if visited.contains(&next) { break; }
+                    if visited.contains(&next) {
+                        break;
+                    }
                     // push cur to the unitig members
-                    members.push(UnitigMember { node_id: cur.clone(), edge: (next.clone(), edge_len) });
+                    members.push(UnitigMember {
+                        node_id: cur.clone(),
+                        edge: (next.clone(), edge_len),
+                    });
                     visited.insert(next.clone());
                     cur = next;
                 }
 
                 // add the final node
-                members.push(UnitigMember { node_id: cur.clone(), edge: (String::new(), 0) });
+                members.push(UnitigMember {
+                    node_id: cur.clone(),
+                    edge: (String::new(), 0),
+                });
 
                 // create the unitig
                 let uid = unitigs.len();
-                unitigs.push(Unitig { id: uid, members, fasta_seq: None });
+                unitigs.push(Unitig {
+                    id: uid,
+                    members,
+                    fasta_seq: None,
+                });
             }
         }
     }
 
     // 3) circular unitigs, handle remaining nodes that are still unvisited
     for id in graph.nodes.keys() {
-        if visited.contains(id) { continue; }
-        println!("C: starting circular unitig at node {}", id);
+        if visited.contains(id) {
+            continue;
+        }
 
         // start a circular unitig
         let mut cur = id.clone();
@@ -144,31 +161,40 @@ pub fn compress_unitigs(graph: &crate::create_overlap_graph::OverlapGraph, fastq
         loop {
             visited.insert(cur.clone());
             // to follow, get the unique outgoing edge
-            println!("C: extending circular unitig");
             let next_edge = out_single(graph, &cur);
             if next_edge.is_none() {
                 // shouldn't happen in pure cycle, break defensively
-                println!("warning: broken cycle detected during unitig compression");
                 break;
             }
             let (next, edge_len) = next_edge.unwrap();
 
             // push cur to the unitig members
-            members.push(UnitigMember { node_id: cur.clone(), edge: (next.clone(), edge_len) });
+            members.push(UnitigMember {
+                node_id: cur.clone(),
+                edge: (next.clone(), edge_len),
+            });
 
             let next_indegree = *indegree.get(&next).unwrap_or(&0);
 
             // stop if the next node breaks the cycle structure (indegree != 1)
-            if next_indegree != 1 { break; }
+            if next_indegree != 1 {
+                break;
+            }
             // stop if next is already visited
-            if visited.contains(&next) { break; }
+            if visited.contains(&next) {
+                break;
+            }
 
             cur = next;
         }
 
         // register unitig
         let uid = unitigs.len();
-        unitigs.push(Unitig { id: uid, members, fasta_seq: None });
+        unitigs.push(Unitig {
+            id: uid,
+            members,
+            fasta_seq: None,
+        });
     }
 
     // Build edges between unitigs based on original overlap graph
@@ -184,7 +210,9 @@ pub fn compress_unitigs(graph: &crate::create_overlap_graph::OverlapGraph, fastq
         if let Some(&from_uid) = node_to_unitig.get(source_id) {
             for e in &node.edges {
                 if let Some(&to_uid) = node_to_unitig.get(&e.target_id) {
-                    if from_uid == to_uid { continue; }
+                    if from_uid == to_uid {
+                        continue;
+                    }
                     let key = (from_uid, to_uid);
                     let entry = unitig_edge_map.entry(key).or_insert(UnitigEdge {
                         from: from_uid,
@@ -208,7 +236,7 @@ pub fn compress_unitigs(graph: &crate::create_overlap_graph::OverlapGraph, fastq
         }
     }
 
-    let mut edges: Vec<UnitigEdge> = unitig_edge_map.into_values().collect();
+    let edges: Vec<UnitigEdge> = unitig_edge_map.into_values().collect();
 
     // load fastq sequences
     println!("Loading FASTQ sequences from {}...", fastq_path);
@@ -275,7 +303,10 @@ fn load_fastq_sequences(fastq_path: &str) -> Result<HashMap<String, String>, Str
 
     while let Some(Ok(header)) = lines.next() {
         if !header.starts_with('@') {
-            return Err(format!("invalid FASTQ format: expected header line starting with '@', got '{}'", header));
+            return Err(format!(
+                "invalid FASTQ format: expected header line starting with '@', got '{}'",
+                header
+            ));
         }
         let seq = match lines.next() {
             Some(Ok(s)) => s,
@@ -295,28 +326,42 @@ fn load_fastq_sequences(fastq_path: &str) -> Result<HashMap<String, String>, Str
 
 /// Build nucleotide sequence for `unitig` by concatenating node sequences and
 /// removing overlaps recorded in UnitigMember.edge.(target, edge_len).
-pub fn unitig_sequence(unitig: &Unitig, graph: &crate::create_overlap_graph::OverlapGraph, fastq_seqs: HashMap<String, String>) -> Result<String, String> {
+pub fn unitig_sequence(
+    unitig: &Unitig,
+    graph: &crate::create_overlap_graph::OverlapGraph,
+    fastq_seqs: HashMap<String, String>,
+) -> Result<String, String> {
     if unitig.members.is_empty() {
-       println!("unitig has no members; cannot infer sequence");
+        println!("unitig has no members; cannot infer sequence");
     }
 
     // Helper to get sequence for a node id
-        let get_seq = |node_id: &str| -> Result<String, String> {
-            // Node ID must end with '+' or '-'
-            let orientation = node_id.chars().last().ok_or_else(|| {
-                format!("node id '{}' has no orientation suffix (+/-)", node_id)
-            })?;
-            let read_id = &node_id[..node_id.len() - 1];
-            let node = graph.nodes.get(node_id)
-                .ok_or_else(|| format!("node_id '{}' not found in overlap graph", node_id))?;
-            let seq = fastq_seqs.get(read_id)
-                .ok_or_else(|| format!("sequence for read_id '{}' not found in FASTQ sequences", read_id))?;
-            match orientation {
-                '+' => Ok(seq.clone()),
-                '-' => Ok(utils::rev_comp(seq)),
-                _ => Err(format!("invalid orientation '{}' in node id '{}'", orientation, node_id)),
-            }
-        };
+    let get_seq = |node_id: &str| -> Result<String, String> {
+        // Node ID must end with '+' or '-'
+        let orientation = node_id
+            .chars()
+            .last()
+            .ok_or_else(|| format!("node id '{}' has no orientation suffix (+/-)", node_id))?;
+        let read_id = &node_id[..node_id.len() - 1];
+        let _node = graph
+            .nodes
+            .get(node_id)
+            .ok_or_else(|| format!("node_id '{}' not found in overlap graph", node_id))?;
+        let seq = fastq_seqs.get(read_id).ok_or_else(|| {
+            format!(
+                "sequence for read_id '{}' not found in FASTQ sequences",
+                read_id
+            )
+        })?;
+        match orientation {
+            '+' => Ok(seq.clone()),
+            '-' => Ok(utils::rev_comp(seq)),
+            _ => Err(format!(
+                "invalid orientation '{}' in node id '{}'",
+                orientation, node_id
+            )),
+        }
+    };
 
     let mut out = String::new();
 
@@ -332,7 +377,13 @@ pub fn unitig_sequence(unitig: &Unitig, graph: &crate::create_overlap_graph::Ove
             out.push_str(&seq);
         } else {
             if edge_len_usize > seq.len() {
-                return Err(format!("edge length ({}) larger than seq length ({}) for node {} to target {}", edge_len_usize, seq.len(), member.node_id, target_id));
+                return Err(format!(
+                    "edge length ({}) larger than seq length ({}) for node {} to target {}",
+                    edge_len_usize,
+                    seq.len(),
+                    member.node_id,
+                    target_id
+                ));
             }
 
             // Append the non-overlapping prefix

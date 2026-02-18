@@ -1,7 +1,11 @@
-use clap::{Parser, Subcommand, Args};
+use clap::{Args, Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "Ilesta", version = "0.0", about = "De novo genome assembly for long reads using the OLC approach")]
+#[command(
+    name = "Ilesta",
+    version = "0.0",
+    about = "De novo genome assembly for long reads using the OLC approach"
+)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
@@ -9,15 +13,8 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    
     /// Alignment filtering
     AlignmentFiltering(AlignmentFilteringArgs),
-
-    /// Overlap graph construction
-    CreateOverlapGraph(CreateOverlapGraphArgs),
-
-    /// Create unitigs
-    CreateUnitigs(CreateUnitigsArgs),
 
     /// Full genome assembly pipeline
     Assemble(AssembleArgs),
@@ -25,7 +22,6 @@ pub enum Commands {
 
 #[derive(Args)]
 pub struct AlignmentFilteringArgs {
-
     /// Input PAF file
     #[arg(short = 'f', long)]
     pub input_paf: String,
@@ -49,7 +45,6 @@ pub struct AlignmentFilteringArgs {
     /// Overhang ratio
     #[arg(long, default_value_t = 0.8)]
     pub overhang_ratio: f32,
-
 }
 
 impl From<&AlignmentFilteringArgs> for crate::configs::AlignmentFilteringConfig {
@@ -66,54 +61,7 @@ impl From<&AlignmentFilteringArgs> for crate::configs::AlignmentFilteringConfig 
 }
 
 #[derive(Args)]
-pub struct CreateOverlapGraphArgs {
-
-    /// Overlaps binary file produced by alignment filtering
-    #[arg(short = 'b', long)]
-    pub overlaps: String,
-} 
-
-impl From<&CreateOverlapGraphArgs> for crate::configs::CreateOverlapGraphConfig {
-    fn from(args: &CreateOverlapGraphArgs) -> Self {
-        Self {
-            overlaps: args.overlaps.clone(),
-        }
-    }
-} 
-
-#[derive(Args)]
-pub struct CreateUnitigsArgs {
-    /// Input overlap graph binary file (serialized overlaps hash)
-    #[arg(short = 'b', long)]
-    pub overlap_graph_binary: String,
-
-    /// Input reads in FASTQ format
-    #[arg(short = 'r', long)]
-    pub reads_fq: String,
-
-    /// Output prefix
-    #[arg(short = 'p', long, default_value = "unitigs")]
-    pub output_prefix: String,
-
-    /// Output directory
-    #[arg(short = 'o', long, default_value = ".")]
-    pub output_dir: String,
-}
-
-impl From<&CreateUnitigsArgs> for crate::configs::UnitigConfig {
-    fn from(args: &CreateUnitigsArgs) -> Self {
-        Self {
-            overlap_graph_binary: args.overlap_graph_binary.clone(),
-            reads_fq: args.reads_fq.clone(),
-            output_prefix: args.output_prefix.clone(),
-            output_dir: args.output_dir.clone(),
-        }
-    }
-}
-
-#[derive(Args)]
 pub struct AssembleArgs {
-
     // Alignment filtering parameters (optional if --overlaps is provided)
     /// Input PAF file (optional if --overlaps is provided)
     #[arg(short = 'f', long)]
@@ -150,6 +98,30 @@ pub struct AssembleArgs {
     /// Output directory
     #[arg(short = 'o', long, default_value = ".")]
     pub output_dir: String,
+
+    /// Maximum bubble length (used during bubble removal)
+    #[arg(long, default_value_t = 100u32)]
+    pub max_bubble_length: u32,
+
+    /// Minimum support ratio for bubble removal
+    #[arg(long, default_value_t = 1.1f64)]
+    pub min_support_ratio: f64,
+
+    /// Maximum tip length for tip trimming
+    #[arg(long, default_value_t = 4u32)]
+    pub max_tip_len: u32,
+
+    /// Fuzz parameter for transitive edge reduction
+    #[arg(long, default_value_t = 10u32)]
+    pub fuzz: u32,
+
+    /// Number of cleanup iterations to run
+    #[arg(long, default_value_t = 2u32)]
+    pub cleanup_iterations: u32,
+
+    /// Short edge removal ratio (heuristic simplification)
+    #[arg(long, default_value_t = 0.8f64)]
+    pub short_edge_ratio: f64,
 }
 
 impl From<&AssembleArgs> for crate::configs::AssembleConfig {
@@ -164,6 +136,12 @@ impl From<&AssembleArgs> for crate::configs::AssembleConfig {
             reads_fq: args.reads_fq.clone(),
             output_prefix: args.output_prefix.clone(),
             output_dir: args.output_dir.clone(),
+            max_bubble_length: args.max_bubble_length,
+            min_support_ratio: args.min_support_ratio,
+            max_tip_len: args.max_tip_len,
+            fuzz: args.fuzz,
+            cleanup_iterations: args.cleanup_iterations,
+            short_edge_ratio: args.short_edge_ratio,
         }
     }
 }
