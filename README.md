@@ -11,8 +11,9 @@ Option 1: Precompiled binaries (recommended):
 ```bash
 # Download the binary
 mkdir Ilesta; cd Ilesta
-wget https://github.com/yvlaere/Ilesta/releases/download/v0.1.0/ilesta-linux-x86_64
+wget https://github.com/yvlaere/Ilesta/releases/download/v1.0.0/ilesta-linux-x86_64
 chmod +x ilesta-linux-x86_64
+mv ilesta-linux-x86_64 Ilesta
 
 # Add Ilesta to your PATH (optional, for easy access):
 export PATH="$PWD:$PATH"
