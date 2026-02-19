@@ -1,7 +1,8 @@
 # Ilesta
 
-Ilesta is a de novo genome assembler for long reads using the Overlap–Layout–Consensus (OLC) approach. It processes long-read sequencing data to detect overlaps, construct an overlap graph, and generate assembly unitigs.
+[![DOI](https://zenodo.org/badge/1043754381.svg)](https://doi.org/10.5281/zenodo.18699305)
 
+Ilesta is a de novo genome assembler for long reads. It processes all-vs-all alignments of long-read sequencing data to detect overlaps, construct an overlap graph, and generate assembly unitigs.
 
 ## Installation
 
