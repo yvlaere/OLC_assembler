@@ -6,7 +6,15 @@ Ilesta is a de novo genome assembler for long reads. It processes all-vs-all ali
 
 ## Installation
 
-Option 1: Precompiled binaries (recommended):
+Option 1: Bioconda (recommended)
+
+```bash
+conda create -n Ilesta_env
+conda activate Ilesta_env
+conda install -c bioconda ilesta
+```
+
+Option 2: Precompiled binaries:
 
 ```bash
 # Download the binary
@@ -19,7 +27,7 @@ mv ilesta-linux-x86_64 Ilesta
 export PATH="$PWD:$PATH"
 ```
 
-Option 2: Build from source (requires Rust 1.85.0 or above):
+Option 3: Build from source (requires Rust 1.85.0 or above):
 
 ```bash
 # Build the release
